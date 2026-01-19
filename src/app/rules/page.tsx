@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
@@ -42,7 +42,7 @@ const steps = [
   { id: 5, name: "Simulate", status: "upcoming" as const },
 ];
 
-export default function RulesPage() {
+function RulesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isComparing, setIsComparing] = useState(searchParams.get("compare") === "true");
@@ -297,5 +297,32 @@ export default function RulesPage() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+export default function RulesPage() {
+  return (
+    <Suspense fallback={
+      <AppLayout>
+        <div className="space-y-5 max-w-[1400px] mx-auto">
+          <Card className="border-dashed">
+            <CardContent className="py-16 text-center">
+              <div className="relative mx-auto w-16 h-16 mb-6">
+                <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '2s' }} />
+                <div className="relative flex items-center justify-center w-full h-full rounded-full bg-primary/10">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Loading...</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                Preparing the rules page...
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    }>
+      <RulesPageContent />
+    </Suspense>
   );
 }
