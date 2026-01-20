@@ -1,17 +1,21 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
 import { ConstraintCard } from "@/components/constraints/ConstraintCard";
+import { ConstraintComparisonCard } from "@/components/comparison/ConstraintComparisonCard";
+import { ComparisonToggle } from "@/components/comparison/ComparisonToggle";
 import { ExtractedRulesDisplay } from "@/components/constraints/ExtractedRulesDisplay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { 
   ArrowRight, 
   FileText, 
   CheckCircle, 
+  GitCompare, 
   Loader2,
   FileSearch,
   Sparkles,
@@ -25,6 +29,21 @@ import {
 interface ExtractedRule {
   title: string;
   rules: string[];
+}
+
+interface RuleDiff {
+  status: "UNCHANGED" | "MODIFIED" | "NEW" | "REMOVED";
+  previous: string | null;
+  current: string | null;
+}
+
+interface ConstraintDelta {
+  id: string;
+  clauseText: string;
+  previousText?: string;
+  changeType: "added" | "removed" | "modified" | "unchanged";
+  confidence: number;
+  previousConfidence?: number;
 }
 
 const steps = [
@@ -83,16 +102,68 @@ const constraints = [
   },
 ];
 
+// Delta data for comparison mode (demo fallback)
+const constraintDeltas = [
+  {
+    id: "1",
+    clauseText: "Portfolio must maintain investment grade securities with minimum BBB rating",
+    previousText: "Portfolio must maintain predominantly investment grade securities",
+    changeType: "modified" as const,
+    confidence: 92,
+    previousConfidence: 78,
+  },
+  {
+    id: "2",
+    clauseText: "Maximum single issuer exposure of 5% of portfolio NAV",
+    changeType: "unchanged" as const,
+    confidence: 95,
+  },
+  {
+    id: "3",
+    clauseText: "No investments permitted in Russian Federation domiciled entities",
+    changeType: "unchanged" as const,
+    confidence: 98,
+  },
+  {
+    id: "4",
+    clauseText: "Tobacco, gambling, and controversial weapons manufacturers excluded",
+    previousText: "Tobacco and controversial weapons manufacturers excluded",
+    changeType: "modified" as const,
+    confidence: 94,
+    previousConfidence: 92,
+  },
+  {
+    id: "5",
+    clauseText: "Financial sector allocation should not exceed 25%",
+    previousText: "Financial sector allocation should not exceed reasonable limits",
+    changeType: "modified" as const,
+    confidence: 96,
+    previousConfidence: 65,
+  },
+  {
+    id: "6",
+    clauseText: "Minimum market capitalization of $500 million for all equity positions",
+    changeType: "added" as const,
+    confidence: 98,
+  },
+];
+
 function ConstraintsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isComparing, setIsComparing] = useState(searchParams.get("compare") === "true");
   const [extractedRules, setExtractedRules] = useState<ExtractedRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>("");
   const [pdfFilename, setPdfFilename] = useState<string>("");
+  const [comparingRules, setComparingRules] = useState(false);
+  const [rulesDiff, setRulesDiff] = useState<{ rules: RuleDiff[] } | null>(null);
+  const [hasExistingVersions, setHasExistingVersions] = useState(false);
+  const [checkingVersions, setCheckingVersions] = useState(true);
 
   useEffect(() => {
-    // Load extracted rules from sessionStorage
+    // Load extracted rules from sessionStorage and check for existing versions
     const loadData = async () => {
       if (typeof window !== 'undefined') {
         const storedRules = sessionStorage.getItem("extractedRules");
@@ -119,15 +190,187 @@ function ConstraintsPageContent() {
             console.error("Error parsing PDF data:", error);
           }
         }
-        
+
+        // Check if there are existing versions in the database
+        const customerId = sessionStorage.getItem("currentCustomerId");
+        const projectId = sessionStorage.getItem("currentProjectId");
+        let hasVersions = false;
+
+        if (customerId) {
+          try {
+            const response = await fetch(`/api/projects/rulesets?customerId=${customerId}`);
+            if (response.ok) {
+              const data = await response.json();
+              // Show toggle if there's at least 1 existing version
+              hasVersions = data.rulesets && data.rulesets.length > 0;
+              setHasExistingVersions(hasVersions);
+
+              // Auto-trigger comparison if there are existing versions and we have extracted rules
+              if (hasVersions && parsedRules.length > 0 && customerId && projectId) {
+                console.log("[constraints] Auto-triggering comparison mode for version update");
+                setComparingRules(true);
+
+                try {
+                  // Get the latest version
+                  const latestVersion = data.rulesets[data.rulesets.length - 1].version;
+
+                  // Fetch the full data for the latest version
+                  const versionResponse = await fetch(`/api/projects/rulesets/${latestVersion}?customerId=${customerId}`);
+
+                  if (versionResponse.ok) {
+                    const versionData = await versionResponse.json();
+                    const latestRawRules = versionData.ruleset.data.raw_rules || [];
+
+                    if (latestRawRules.length > 0) {
+                      // Call the rules diff API
+                      const diffResponse = await fetch("/api/agents/rules-diff", {
+                        method: "POST",
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          projectId: projectId,
+                          customerId: customerId,
+                          rulesExtractorResponse: parsedRules,
+                          latestRulesFromDB: latestRawRules,
+                        }),
+                      });
+
+                      if (diffResponse.ok) {
+                        const diffData = await diffResponse.json();
+                        console.log("[constraints] Auto-comparison complete:", diffData);
+                        setRulesDiff(diffData);
+                        setIsComparing(true);
+                      }
+                    }
+                  }
+                } catch (compareError) {
+                  console.error("[constraints] Auto-comparison failed:", compareError);
+                  // Don't show error to user, just disable comparison mode
+                } finally {
+                  setComparingRules(false);
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Error checking for existing versions:", error);
+          }
+        }
+
         setLoading(false);
+        setCheckingVersions(false);
       }
     };
 
     loadData();
   }, []);
 
+  const handleCompareToggle = async () => {
+    if (!isComparing) {
+      // Turning comparison mode ON - fetch and compare
+      await fetchAndCompareRules();
+    } else {
+      // Turning comparison mode OFF - just toggle
+      setIsComparing(false);
+      setRulesDiff(null);
+    }
+  };
+
+  const fetchAndCompareRules = async () => {
+    if (extractedRules.length === 0) {
+      alert("No extracted rules available for comparison. Please extract rules first.");
+      return;
+    }
+
+    setComparingRules(true);
+    try {
+      // Get customerId and projectId from sessionStorage
+      let customerId = "";
+      let projectId = "";
+
+      if (typeof window !== 'undefined') {
+        customerId = sessionStorage.getItem("currentCustomerId") || "";
+        projectId = sessionStorage.getItem("currentProjectId") || "";
+
+        if (!customerId || !projectId) {
+          throw new Error("Missing customer or project ID. Please start from the upload step.");
+        }
+      }
+
+      // Step 1: Fetch all rulesets to get the latest version
+      const rulesetsResponse = await fetch(`/api/projects/rulesets?customerId=${customerId}`);
+
+      if (!rulesetsResponse.ok) {
+        throw new Error("Failed to fetch project versions");
+      }
+
+      const rulesetsData = await rulesetsResponse.json();
+
+      if (!rulesetsData.rulesets || rulesetsData.rulesets.length === 0) {
+        alert("No previous versions found. Cannot compare without a baseline version.");
+        return;
+      }
+
+      // Get the latest version number
+      const latestVersion = rulesetsData.rulesets[rulesetsData.rulesets.length - 1].version;
+
+      // Step 2: Fetch the full data for the latest version
+      const versionResponse = await fetch(`/api/projects/rulesets/${latestVersion}?customerId=${customerId}`);
+
+      if (!versionResponse.ok) {
+        throw new Error("Failed to fetch latest version data");
+      }
+
+      const versionData = await versionResponse.json();
+      const latestRawRules = versionData.ruleset.data.raw_rules || [];
+
+      if (latestRawRules.length === 0) {
+        alert("Latest version has no raw rules to compare against.");
+        return;
+      }
+
+      // Step 3: Call the rules diff API
+      const diffResponse = await fetch("/api/agents/rules-diff", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          projectId: projectId,
+          customerId: customerId,
+          rulesExtractorResponse: extractedRules,
+          latestRulesFromDB: latestRawRules,
+        }),
+      });
+
+      if (!diffResponse.ok) {
+        const errorData = await diffResponse.json();
+        throw new Error(errorData.error || "Failed to compare rules");
+      }
+
+      const diffData = await diffResponse.json();
+      console.log("Rules diff result:", diffData);
+
+      // Store the diff data and enable comparison mode
+      setRulesDiff(diffData);
+      setIsComparing(true);
+    } catch (error) {
+      console.error("Error comparing rules:", error);
+      alert(error instanceof Error ? error.message : "Failed to compare rules. Please try again.");
+    } finally {
+      setComparingRules(false);
+    }
+  };
+
   const handleGenerateRules = async () => {
+    // Even if the user was comparing versions, the forward flow should run the
+    // real pipeline (rules → gap analysis) and then continue normally.
+    // Comparison mode is meant for review, not to replace downstream steps.
+    if (isComparing) {
+      setIsComparing(false);
+      setRulesDiff(null);
+    }
+
     if (extractedRules.length === 0) {
       alert("No extracted rules available. Please upload and extract a document first.");
       return;
@@ -221,6 +464,31 @@ function ConstraintsPageContent() {
     }
   };
   
+  // Transform API diff response to UI format
+  const transformedDiff: ConstraintDelta[] = rulesDiff?.rules ? rulesDiff.rules.map((rule: RuleDiff, index: number) => {
+    const changeTypeMap: Record<string, "added" | "removed" | "modified" | "unchanged"> = {
+      "NEW": "added",
+      "REMOVED": "removed",
+      "MODIFIED": "modified",
+      "UNCHANGED": "unchanged"
+    };
+
+    return {
+      id: `rule-${index + 1}`,
+      clauseText: rule.current || rule.previous || "N/A",
+      previousText: rule.previous || undefined,
+      changeType: changeTypeMap[rule.status] || "unchanged",
+      confidence: 95, // Default confidence since API doesn't provide it
+      previousConfidence: rule.status === "MODIFIED" ? 90 : undefined,
+    };
+  }) : [];
+
+  // Use transformed diff data if available, otherwise use demo data
+  const displayedDeltas: ConstraintDelta[] = isComparing && rulesDiff ? transformedDiff : constraintDeltas;
+
+  const addedCount = displayedDeltas.filter((c: ConstraintDelta) => c.changeType === "added").length;
+  const modifiedCount = displayedDeltas.filter((c: ConstraintDelta) => c.changeType === "modified").length;
+
   // Calculate stats from extracted rules
   const totalRules = extractedRules.reduce((acc, section) => acc + section.rules.length, 0);
   const totalSections = extractedRules.length;
@@ -257,17 +525,76 @@ function ConstraintsPageContent() {
                     </span>
                   </div>
                   <h1 className="text-xl font-bold tracking-tight">
-                    Constraint Extraction
+                    {isComparing ? "Compare Guidelines" : "Constraint Extraction"}
                   </h1>
                 </div>
               </div>
               
             </div>
+
+            {hasExistingVersions && !checkingVersions && (
+              <ComparisonToggle 
+                isComparing={isComparing} 
+                onToggle={handleCompareToggle}
+                isLoading={comparingRules}
+              />
+            )}
           </div>
         </div>
 
         {/* Workflow Stepper */}
         <WorkflowStepper steps={steps} />
+
+        {/* Comparison Mode Banner */}
+        {isComparing && (
+          <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-primary/[0.02] to-transparent overflow-hidden animate-fade-up">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-4">
+                <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <GitCompare className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {rulesDiff ? "Version Comparison Complete" : "Comparing Guidelines"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                    {rulesDiff ? (
+                      <>
+                        <span className="font-mono text-[10px]">Latest Version</span>
+                        <ArrowRight className="w-3 h-3" />
+                        <span className="font-mono text-[10px]">Current Extraction</span>
+                        <CheckCircle className="w-3 h-3 text-emerald-500 ml-1" />
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono text-[10px]">Investment_Guidelines_Q4_2024.pdf</span>
+                        <ArrowRight className="w-3 h-3" />
+                        <span className="font-mono text-[10px]">Investment_Guidelines_Q1_2025.pdf</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {addedCount > 0 && (
+                    <Badge className="gap-1 px-2.5 py-1 text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+                      {addedCount} Added
+                    </Badge>
+                  )}
+                  {modifiedCount > 0 && (
+                    <Badge className="gap-1 px-2.5 py-1 text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                      {modifiedCount} Modified
+                    </Badge>
+                  )}
+                  {addedCount === 0 && modifiedCount === 0 && (
+                    <Badge className="gap-1 px-2.5 py-1 text-[10px] bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30">
+                      No Changes
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Main Content Grid */}
         <div className="grid lg:grid-cols-4 gap-4">
@@ -288,6 +615,42 @@ function ConstraintsPageContent() {
                   </p>
                 </CardContent>
               </Card>
+            ) : isComparing ? (
+              <div className="space-y-3">
+                {comparingRules ? (
+                  <Card className="border-dashed">
+                    <CardContent className="py-12 text-center">
+                      <div className="relative mx-auto w-14 h-14 mb-5">
+                        <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '2s' }} />
+                        <div className="relative flex items-center justify-center w-full h-full rounded-full bg-primary/10">
+                          <Loader2 className="w-7 h-7 animate-spin text-primary" />
+                        </div>
+                      </div>
+                      <h3 className="text-lg font-semibold text-foreground mb-2">Comparing Versions</h3>
+                      <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                        Analyzing differences between current and previous rules...
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : displayedDeltas.length > 0 ? (
+                  displayedDeltas.map((constraint: ConstraintDelta, index: number) => (
+                    <div 
+                      key={constraint.id}
+                      className="animate-fade-up opacity-0"
+                      style={{ animationDelay: `${index * 0.08}s`, animationFillMode: 'forwards' }}
+                    >
+                      <ConstraintComparisonCard constraint={constraint} />
+                    </div>
+                  ))
+                ) : (
+                  <Card className="border-warning/50">
+                    <CardContent className="py-12 text-center">
+                      <AlertCircle className="w-12 h-12 mx-auto text-warning mb-4" />
+                      <p className="text-sm text-muted-foreground">No comparison data available</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             ) : extractedRules.length > 0 ? (
               <ExtractedRulesDisplay rules={extractedRules} />
             ) : (
@@ -333,7 +696,7 @@ function ConstraintsPageContent() {
                 <Button 
                   onClick={handleGenerateRules} 
                   size="default"
-                  disabled={loading || generating || extractedRules.length === 0}
+                  disabled={loading || generating || (!isComparing && extractedRules.length === 0)}
                   className="gap-2 px-6 h-10 text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300"
                 >
                   {generating ? (
@@ -360,7 +723,7 @@ function ConstraintsPageContent() {
               <CardHeader className="pb-3 border-b border-border/50 bg-muted/30">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <FileText className="w-4 h-4 text-primary" />
-                  Source Document
+                  {isComparing ? "Document Comparison" : "Source Document"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4 space-y-3">
@@ -370,7 +733,7 @@ function ConstraintsPageContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-foreground truncate">
-                      {pdfFilename || "Investment_Guidelines_Q4_2024.pdf"}
+                      {isComparing ? "Investment_Guidelines_Q1_2025.pdf" : (pdfFilename || "Investment_Guidelines_Q4_2024.pdf")}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {loading ? (
@@ -389,24 +752,45 @@ function ConstraintsPageContent() {
                 </div>
                 
                 <div className="pt-2.5 border-t border-border/50 space-y-2.5">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Sections Found</span>
-                    <span className="font-bold text-foreground tabular-nums">
-                      {loading ? "..." : (totalSections > 0 ? totalSections : "5")}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Total Rules</span>
-                    <span className="font-bold text-foreground tabular-nums">
-                      {loading ? "..." : (totalRules > 0 ? totalRules : "—")}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Avg per Section</span>
-                    <span className="font-bold text-primary tabular-nums">
-                      {loading ? "..." : (totalSections > 0 ? (totalRules / totalSections).toFixed(1) : "—")}
-                    </span>
-                  </div>
+                  {isComparing ? (
+                    <>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">New Constraints</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{addedCount}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Modified</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">{modifiedCount}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Unchanged</span>
+                        <span className="font-bold text-foreground tabular-nums">
+                          {displayedDeltas.filter((c: ConstraintDelta) => c.changeType === "unchanged").length}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Sections Found</span>
+                        <span className="font-bold text-foreground tabular-nums">
+                          {loading ? "..." : (totalSections > 0 ? totalSections : "5")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Total Rules</span>
+                        <span className="font-bold text-foreground tabular-nums">
+                          {loading ? "..." : (totalRules > 0 ? totalRules : "—")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Avg per Section</span>
+                        <span className="font-bold text-primary tabular-nums">
+                          {loading ? "..." : (totalSections > 0 ? (totalRules / totalSections).toFixed(1) : "—")}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -430,19 +814,21 @@ function ConstraintsPageContent() {
                   </div>
                   <div className="flex-1">
                     <span className={`text-sm font-semibold ${loading ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {loading ? "Processing..." : "Extraction Complete"}
+                      {loading ? "Processing..." : (isComparing ? "Comparison Complete" : "Extraction Complete")}
                     </span>
                     <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                      {loading
-                        ? "The extraction agent is processing your document..."
-                        : "Constraint Extraction Agent processed the document successfully. Review before proceeding."
+                      {isComparing
+                        ? "Delta analysis complete. Review changes before generating updated rules."
+                        : loading
+                          ? "The extraction agent is processing your document..."
+                          : "Constraint Extraction Agent processed the document successfully. Review before proceeding."
                       }
                     </p>
                   </div>
                 </div>
 
                 {/* Tip */}
-                {!loading && extractedRules.length === 0 && (
+                {!loading && !isComparing && extractedRules.length === 0 && (
                   <div className="mt-3 pt-3 border-t border-border/50">
                     <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg p-3">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -463,7 +849,10 @@ function ConstraintsPageContent() {
                   <div>
                     <p className="text-sm font-semibold text-foreground">Pro Tip</p>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                      Hover over constraint cards to see additional details.
+                      {isComparing
+                        ? "Review each card to see what changed between versions."
+                        : "Hover over constraint cards to see additional details."
+                      }
                     </p>
                   </div>
                 </div>
