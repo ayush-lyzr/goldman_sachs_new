@@ -37,8 +37,8 @@ const projectTypes = ["Family Office", "Corporate", "UHNI", "Institutional"];
 // Customer data - this would typically come from an API in production
 const CUSTOMERS = [
   {
-    id: "company-one",
-    name: "Company One",
+    id: "client-1",
+    name: "Client 1",
     fidessa_catalog: {
       Issuer_Country: "US,GB,DE,FR,JP,IN,CN,CA,AU,CH,SE,NO,BR,MX,SG,XX",
       Coupon_Rate: "0.0-12.0%",
@@ -51,8 +51,8 @@ const CUSTOMERS = [
     },
   },
   {
-    id: "company-two",
-    name: "Company Two",
+    id: "client-2",
+    name: "Client 2",
     fidessa_catalog: {
       Issuer_Country: "US,GB,DE,FR,JP,IN,CN,CA,AU,CH,SE,NO,BR,MX,SG,XX",
       Instrument_Type: "Sovereign,Corporate,Sukuk",
@@ -65,8 +65,8 @@ const CUSTOMERS = [
     },
   },
   {
-    id: "company-three",
-    name: "Company Three",
+    id: "client-3",
+    name: "Client 3",
     fidessa_catalog: {
       Issuer_Country: "US,GB,DE,FR,JP,IN,CN,CA,AU,CH,SE,NO,BR,MX,SG,XX",
       Instrument_Type: "Sovereign,Supranational,Agency,Corporate",
