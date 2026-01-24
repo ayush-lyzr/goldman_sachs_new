@@ -42,8 +42,15 @@ interface SelectedCompany {
   fidessa_catalog: CustomerCatalog;
 }
 
+interface FieldConfig {
+  icon: React.ElementType;
+  bg: string;
+  text: string;
+  border: string;
+}
+
 // Icon and color mapping for catalog fields
-const fieldConfig: Record<string, { icon: React.ElementType; bg: string; text: string; border: string }> = {
+const fieldConfig: Record<string, FieldConfig> = {
   Issuer_Country: { 
     icon: Globe, 
     bg: "bg-blue-50",
@@ -94,7 +101,7 @@ const fieldConfig: Record<string, { icon: React.ElementType; bg: string; text: s
   },
 };
 
-const defaultFieldConfig = { 
+const defaultFieldConfig: FieldConfig = { 
   icon: Tag, 
   bg: "bg-slate-50",
   text: "text-slate-600",
@@ -141,7 +148,7 @@ export function ClientRulesModal() {
     });
   };
 
-  const renderFieldValue = (key: string, value: string, config: typeof defaultFieldConfig) => {
+  const renderFieldValue = (key: string, value: string, config: FieldConfig) => {
     const values = value.split(",").map((v) => v.trim()).filter(Boolean);
     const isExpanded = expandedFields.has(key);
     const showExpand = values.length > 10;
