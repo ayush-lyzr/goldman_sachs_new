@@ -6,7 +6,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
 import { ConstraintCard } from "@/components/constraints/ConstraintCard";
 import { ConstraintComparisonCard } from "@/components/comparison/ConstraintComparisonCard";
-import { ComparisonToggle } from "@/components/comparison/ComparisonToggle";
+import { ComparisonToggle, VersionInfo } from "@/components/comparison/ComparisonToggle";
 import { ExtractedRulesDisplay } from "@/components/constraints/ExtractedRulesDisplay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,7 +51,7 @@ const steps = [
   { id: 2, name: "Extract", status: "current" as const },
   { id: 3, name: "Generate Rules", status: "upcoming" as const },
   { id: 4, name: "Gap Analysis", status: "upcoming" as const },
-  { id: 5, name: "Simulate", status: "upcoming" as const },
+  // { id: 5, name: "Simulate", status: "upcoming" as const },
 ];
 
 const constraints = [
@@ -161,6 +161,8 @@ function ConstraintsPageContent() {
   const [rulesDiff, setRulesDiff] = useState<{ rules: RuleDiff[] } | null>(null);
   const [hasExistingVersions, setHasExistingVersions] = useState(false);
   const [checkingVersions, setCheckingVersions] = useState(true);
+  const [availableVersions, setAvailableVersions] = useState<VersionInfo[]>([]);
+  const [selectedCompareVersion, setSelectedCompareVersion] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     // Load extracted rules from sessionStorage and check for existing versions
@@ -205,13 +207,26 @@ function ConstraintsPageContent() {
               hasVersions = data.rulesets && data.rulesets.length > 0;
               setHasExistingVersions(hasVersions);
 
+              // Build versions array with isLatest flag
+              if (hasVersions) {
+                const latestVersionNum = data.rulesets[data.rulesets.length - 1].version;
+                const versionsWithLatest: VersionInfo[] = data.rulesets.map((rs: { version: number; versionName: string; createdAt: string }) => ({
+                  version: rs.version,
+                  versionName: rs.versionName,
+                  createdAt: rs.createdAt,
+                  isLatest: rs.version === latestVersionNum,
+                }));
+                setAvailableVersions(versionsWithLatest);
+                setSelectedCompareVersion(latestVersionNum); // Default to latest
+              }
+
               // Auto-trigger comparison if there are existing versions and we have extracted rules
               if (hasVersions && parsedRules.length > 0 && customerId && projectId) {
                 console.log("[constraints] Auto-triggering comparison mode for version update");
                 setComparingRules(true);
 
                 try {
-                  // Get the latest version
+                  // Get the latest version (always use latest for auto-compare)
                   const latestVersion = data.rulesets[data.rulesets.length - 1].version;
 
                   // Fetch the full data for the latest version
@@ -276,7 +291,17 @@ function ConstraintsPageContent() {
     }
   };
 
-  const fetchAndCompareRules = async () => {
+  // Handler for version selection - auto-compares if already in compare mode
+  const handleVersionSelect = async (version: number) => {
+    setSelectedCompareVersion(version);
+    
+    // If we're already in compare mode, automatically re-compare with the new version
+    if (isComparing) {
+      await fetchAndCompareRules(version);
+    }
+  };
+
+  const fetchAndCompareRules = async (versionToCompare?: number) => {
     if (extractedRules.length === 0) {
       alert("No extracted rules available for comparison. Please extract rules first.");
       return;
@@ -297,39 +322,30 @@ function ConstraintsPageContent() {
         }
       }
 
-      // Step 1: Fetch all rulesets to get the latest version
-      const rulesetsResponse = await fetch(`/api/projects/rulesets?customerId=${customerId}`);
+      // Use the provided version or the selected version from state
+      const targetVersion = versionToCompare ?? selectedCompareVersion;
 
-      if (!rulesetsResponse.ok) {
-        throw new Error("Failed to fetch project versions");
-      }
-
-      const rulesetsData = await rulesetsResponse.json();
-
-      if (!rulesetsData.rulesets || rulesetsData.rulesets.length === 0) {
-        alert("No previous versions found. Cannot compare without a baseline version.");
+      if (!targetVersion) {
+        alert("Please select a version to compare against.");
         return;
       }
 
-      // Get the latest version number
-      const latestVersion = rulesetsData.rulesets[rulesetsData.rulesets.length - 1].version;
-
-      // Step 2: Fetch the full data for the latest version
-      const versionResponse = await fetch(`/api/projects/rulesets/${latestVersion}?customerId=${customerId}`);
+      // Fetch the full data for the selected version
+      const versionResponse = await fetch(`/api/projects/rulesets/${targetVersion}?customerId=${customerId}`);
 
       if (!versionResponse.ok) {
-        throw new Error("Failed to fetch latest version data");
+        throw new Error("Failed to fetch version data");
       }
 
       const versionData = await versionResponse.json();
-      const latestRawRules = versionData.ruleset.data.raw_rules || [];
+      const versionRawRules = versionData.ruleset.data.raw_rules || [];
 
-      if (latestRawRules.length === 0) {
-        alert("Latest version has no raw rules to compare against.");
+      if (versionRawRules.length === 0) {
+        alert("Selected version has no raw rules to compare against.");
         return;
       }
 
-      // Step 3: Call the rules diff API
+      // Step 2: Call the rules diff API
       const diffResponse = await fetch("/api/agents/rules-diff", {
         method: "POST",
         headers: {
@@ -339,7 +355,7 @@ function ConstraintsPageContent() {
           projectId: projectId,
           customerId: customerId,
           rulesExtractorResponse: extractedRules,
-          latestRulesFromDB: latestRawRules,
+          latestRulesFromDB: versionRawRules,
         }),
       });
 
@@ -554,6 +570,9 @@ function ConstraintsPageContent() {
                 isComparing={isComparing} 
                 onToggle={handleCompareToggle}
                 isLoading={comparingRules}
+                versions={availableVersions}
+                selectedVersion={selectedCompareVersion}
+                onVersionSelect={handleVersionSelect}
               />
             )}
           </div>
@@ -577,7 +596,10 @@ function ConstraintsPageContent() {
                   <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
                     {rulesDiff ? (
                       <>
-                        <span className="font-mono text-[10px]">Latest Version</span>
+                        <span className="font-mono text-[10px]">
+                          {availableVersions.find(v => v.version === selectedCompareVersion)?.versionName || 'Selected Version'}
+                          {availableVersions.find(v => v.version === selectedCompareVersion)?.isLatest ? ' (latest)' : ''}
+                        </span>
                         <ArrowRight className="w-3 h-3" />
                         <span className="font-mono text-[10px]">Current Extraction</span>
                         <CheckCircle className="w-3 h-3 text-emerald-500 ml-1" />

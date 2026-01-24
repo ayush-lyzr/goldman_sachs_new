@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bell, RefreshCw } from "lucide-react";
 import { UpdateGuidelinesDialog } from "@/components/dashboard/UpdateGuidelinesDialog";
+import { ClientRulesModal } from "./ClientRulesModal";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -80,7 +81,10 @@ export function AppHeader({ mandateName, status = "compliant" }: AppHeaderProps)
         </div>
       </div>
 
-      
+      {/* Right side actions */}
+      <div className="flex items-center gap-2">
+        <ClientRulesModal />
+      </div>
     </header>
   );
 }

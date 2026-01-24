@@ -23,7 +23,7 @@ const steps = [
   { id: 2, name: "Extract", status: "completed" as const },
   { id: 3, name: "Generate Rules", status: "completed" as const },
   { id: 4, name: "Gap Analysis", status: "completed" as const },
-  { id: 5, name: "Simulate", status: "completed" as const },
+  // { id: 5, name: "Simulate", status: "completed" as const },
 ];
 
 const sectionLinks = [

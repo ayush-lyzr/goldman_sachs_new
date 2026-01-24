@@ -28,7 +28,7 @@ const steps = [
   { id: 2, name: "Extract", status: "completed" as const },
   { id: 3, name: "Generate Rules", status: "current" as const },
   { id: 4, name: "Gap Analysis", status: "current" as const },
-  { id: 5, name: "Simulate", status: "upcoming" as const },
+  // { id: 5, name: "Simulate", status: "upcoming" as const },
 ];
 
 function RulesPageContent() {
@@ -127,7 +127,7 @@ function RulesPageContent() {
           )}
 
           {/* Action Footer */}
-          <div className="flex justify-end pt-4 border-t border-border/50">
+          {/* <div className="flex justify-end pt-4 border-t border-border/50">
             <Button 
               onClick={() => router.push("/simulation")} 
               size="default"
@@ -136,7 +136,7 @@ function RulesPageContent() {
               <span>Continue to Simulation</span>
               <ArrowRight className="w-4 h-4" />
             </Button>
-          </div>
+          </div> */}
         </div>
       </div>
     </AppLayout>
