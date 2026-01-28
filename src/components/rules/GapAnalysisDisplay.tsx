@@ -171,7 +171,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
         <div className="col-span-4">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-            Fidessa Values {selectedCustomer && `(${selectedCustomer.companyName})`}
+            Sentinel Values {selectedCustomer && `(${selectedCustomer.companyName})`}
           </span>
         </div>
         <div className="col-span-2 text-right">
@@ -241,55 +241,78 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                   {/* PDF Values */}
                   <div className="col-span-3 space-y-1.5">
                     <div className="flex flex-wrap gap-1.5">
-                      {rule.pdf_value.length > 0 ? (
-                        rule.pdf_value.map((value, valueIndex) => (
-                          <Badge
-                            key={valueIndex}
-                            variant="outline"
-                            className="text-[11px] font-medium px-2 py-0.5 transition-all duration-300 bg-cyan-500/10 border-cyan-500/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20"
-                          >
-                            {value}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-xs text-muted-foreground/50 italic">—</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Fidessa Values */}
-                  <div className="col-span-4 space-y-1.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {rule.fidessa_value.length > 0 ? (
-                        rule.fidessa_value.map((value, valueIndex) => {
-                          // Check if this Fidessa value is excluded in PDF (has ! prefix)
-                          const isExcludedInPdf = rule.pdf_value.includes(`!${value}`);
-                          // Check if this Fidessa value is included in PDF (no ! prefix)
-                          const isIncludedInPdf = rule.pdf_value.includes(value);
-                          
-                          return (
+                      {(() => {
+                        // Filter out items with exclamation mark
+                        const filteredPdfValues = rule.pdf_value.filter(value => !value.startsWith('!'));
+                        
+                        if (filteredPdfValues.length > 0) {
+                          return filteredPdfValues.map((value, valueIndex) => (
                             <Badge
                               key={valueIndex}
                               variant="outline"
-                              className={`
-                                text-[11px] font-medium px-2 py-0.5 transition-all duration-300
-                                ${isExcludedInPdf
-                                  ? 'bg-red-500/10 border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/20 ring-2 ring-red-500/20'
-                                  : isIncludedInPdf
-                                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 ring-2 ring-emerald-500/20'
-                                    : 'bg-slate-500/5 border-slate-500/20 text-slate-600 dark:text-slate-400'
-                                }
-                              `}
+                              className="text-[11px] font-medium px-2 py-0.5 transition-all duration-300 bg-cyan-500/10 border-cyan-500/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20"
                             >
                               {value}
-                              {isExcludedInPdf ? (
-                                <XCircle className="w-3 h-3 ml-1 inline" />
-                              ) : isIncludedInPdf ? (
-                                <CheckCircle2 className="w-3 h-3 ml-1 inline" />
-                              ) : null}
+                            </Badge>
+                          ));
+                        } else if (rule.pdf_value.length > 0) {
+                          // All values had exclamation marks, show "any"
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="text-[11px] font-medium px-2 py-0.5 transition-all duration-300 bg-cyan-500/10 border-cyan-500/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20"
+                            >
+                              any
                             </Badge>
                           );
-                        })
+                        } else {
+                          // No PDF values at all
+                          return <span className="text-xs text-muted-foreground/50 italic">—</span>;
+                        }
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Sentinel Values */}
+                  <div className="col-span-4 space-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {rule.fidessa_value.length > 0 ? (
+                        (() => {
+                          // Split comma-separated values and flatten the array
+                          const allValues = rule.fidessa_value.flatMap(value => 
+                            value.split(',').map(v => v.trim()).filter(v => v)
+                          );
+                          
+                          return allValues.map((value, valueIndex) => {
+                            // Check if this Sentinel value is excluded in PDF (has ! prefix)
+                            const isExcludedInPdf = rule.pdf_value.includes(`!${value}`);
+                            // Check if this Sentinel value is included in PDF (no ! prefix)
+                            const isIncludedInPdf = rule.pdf_value.includes(value);
+                            
+                            return (
+                              <Badge
+                                key={valueIndex}
+                                variant="outline"
+                                className={`
+                                  text-[11px] font-medium px-2 py-0.5 transition-all duration-300
+                                  ${isExcludedInPdf
+                                    ? 'bg-red-500/10 border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/20 ring-2 ring-red-500/20'
+                                    : isIncludedInPdf
+                                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 ring-2 ring-emerald-500/20'
+                                      : 'bg-slate-500/5 border-slate-500/20 text-slate-600 dark:text-slate-400'
+                                  }
+                                `}
+                              >
+                                {value}
+                                {isExcludedInPdf ? (
+                                  <XCircle className="w-3 h-3 ml-1 inline" />
+                                ) : isIncludedInPdf ? (
+                                  <CheckCircle2 className="w-3 h-3 ml-1 inline" />
+                                ) : null}
+                              </Badge>
+                            );
+                          });
+                        })()
                       ) : (
                         <span className="text-xs text-muted-foreground/50 italic">—</span>
                       )}
