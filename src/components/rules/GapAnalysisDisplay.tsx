@@ -276,46 +276,54 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                   {/* Sentinel Values */}
                   <div className="col-span-4 space-y-1.5">
                     <div className="flex flex-wrap gap-1.5">
-                      {rule.fidessa_value.length > 0 ? (
-                        (() => {
-                          // Split comma-separated values and flatten the array
-                          const allValues = rule.fidessa_value.flatMap(value => 
-                            value.split(',').map(v => v.trim()).filter(v => v)
-                          );
+                      {(() => {
+                        if (rule.fidessa_value.length === 0) {
+                          return <span className="text-xs text-muted-foreground/50 italic">—</span>;
+                        }
+                        
+                        // Split comma-separated values and flatten the array
+                        const allValues = rule.fidessa_value.flatMap(value => 
+                          value.split(',').map(v => v.trim()).filter(v => v)
+                        );
+                        
+                        // Filter to only show sentinel values that appear in PDF (with or without !)
+                        const relevantValues = allValues.filter(value => {
+                          const isExcludedInPdf = rule.pdf_value.includes(`!${value}`);
+                          const isIncludedInPdf = rule.pdf_value.includes(value);
+                          return isExcludedInPdf || isIncludedInPdf;
+                        });
+                        
+                        if (relevantValues.length === 0) {
+                          return <span className="text-xs text-muted-foreground/50 italic">—</span>;
+                        }
+                        
+                        return relevantValues.map((value, valueIndex) => {
+                          // Check if this Sentinel value is excluded in PDF (has ! prefix)
+                          const isExcludedInPdf = rule.pdf_value.includes(`!${value}`);
+                          const isIncludedInPdf = rule.pdf_value.includes(value);
                           
-                          return allValues.map((value, valueIndex) => {
-                            // Check if this Sentinel value is excluded in PDF (has ! prefix)
-                            const isExcludedInPdf = rule.pdf_value.includes(`!${value}`);
-                            // Check if this Sentinel value is included in PDF (no ! prefix)
-                            const isIncludedInPdf = rule.pdf_value.includes(value);
-                            
-                            return (
-                              <Badge
-                                key={valueIndex}
-                                variant="outline"
-                                className={`
-                                  text-[11px] font-medium px-2 py-0.5 transition-all duration-300
-                                  ${isExcludedInPdf
-                                    ? 'bg-red-500/10 border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/20 ring-2 ring-red-500/20'
-                                    : isIncludedInPdf
-                                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 ring-2 ring-emerald-500/20'
-                                      : 'bg-slate-500/5 border-slate-500/20 text-slate-600 dark:text-slate-400'
-                                  }
-                                `}
-                              >
-                                {value}
-                                {isExcludedInPdf ? (
-                                  <XCircle className="w-3 h-3 ml-1 inline" />
-                                ) : isIncludedInPdf ? (
-                                  <CheckCircle2 className="w-3 h-3 ml-1 inline" />
-                                ) : null}
-                              </Badge>
-                            );
-                          });
-                        })()
-                      ) : (
-                        <span className="text-xs text-muted-foreground/50 italic">—</span>
-                      )}
+                          return (
+                            <Badge
+                              key={valueIndex}
+                              variant="outline"
+                              className={`
+                                text-[11px] font-medium px-2 py-0.5 transition-all duration-300
+                                ${isExcludedInPdf
+                                  ? 'bg-red-500/10 border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/20 ring-2 ring-red-500/20'
+                                  : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 ring-2 ring-emerald-500/20'
+                                }
+                              `}
+                            >
+                              {value}
+                              {isExcludedInPdf ? (
+                                <XCircle className="w-3 h-3 ml-1 inline" />
+                              ) : (
+                                <CheckCircle2 className="w-3 h-3 ml-1 inline" />
+                              )}
+                            </Badge>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
 
