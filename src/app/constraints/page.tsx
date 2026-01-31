@@ -32,16 +32,21 @@ interface ExtractedRule {
   rules: string[];
 }
 
-interface ComparisonResult {
-  tag: "unchanged" | "modified" | "added" | "removed";
-  previous: string | null;
-  current: string | null;
+type ChangeTag = "unchanged" | "modified" | "added" | "removed";
+
+interface ConstraintChangeLine {
+  tag: Exclude<ChangeTag, "modified">;
+  text: string;
 }
 
 interface VersionComparison {
   from: string;
   to: string;
-  results: ComparisonResult[];
+  changes_by_constraint: Array<{
+    constraint_title: string;
+    status: ChangeTag;
+    changes: ConstraintChangeLine[];
+  }>;
 }
 
 interface VersionInfo {
@@ -183,12 +188,14 @@ function ConstraintsPageContent() {
         
         if (storedRules) {
           try {
-            const rules = JSON.parse(storedRules);
-            parsedRules = Array.isArray(rules)
-              ? rules
-              : Array.isArray((rules as any)?.rules)
-                ? (rules as any).rules
-                : [];
+            const parsed: unknown = JSON.parse(storedRules);
+            const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+            const extractRulesArray = (v: unknown): ExtractedRule[] => {
+              if (Array.isArray(v)) return v as ExtractedRule[];
+              if (isRecord(v) && Array.isArray(v.rules)) return v.rules as ExtractedRule[];
+              return [];
+            };
+            parsedRules = extractRulesArray(parsed);
             setExtractedRules(parsedRules);
           } catch (error) {
             console.error("Error parsing extracted rules:", error);

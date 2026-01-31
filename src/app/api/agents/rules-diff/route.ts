@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { callLyzrAgent } from "@/lib/lyzr";
-import { connectDB } from "@/lib/mongodb";
-import { Project } from "@/models/Project";
+import { tryParseJson } from "@/lib/utils";
+
+export const runtime = "nodejs";
 
 const AGENT_ID = "696a167ea5272eccb326c2ec";
 
@@ -10,7 +11,7 @@ interface RawRule {
   rules: string[];
 }
 
-interface VersionData {
+interface RulesVersionPayload {
   version: number;
   versionName: string;
   createdAt: string;
@@ -20,58 +21,25 @@ interface VersionData {
 interface RulesDiffRequest {
   projectId: string;
   customerId: string;
-  rulesExtractorResponse?: string | object;
-  versions?: VersionData[]; // For multi-version comparison
-}
-
-interface ComparisonResult {
-  tag: "unchanged" | "modified" | "added" | "removed";
-  previous: string | null;
-  current: string | null;
-}
-
-interface VersionComparison {
-  from: string;
-  to: string;
-  results: ComparisonResult[];
-}
-
-interface MultiVersionDiffResponse {
-  versions: Array<{
-    version: number;
-    versionName: string;
-    createdAt: string;
-  }>;
-  comparisons: VersionComparison[];
+  versions: RulesVersionPayload[];
 }
 
 /**
  * Rules Diff Agent API
- * 
+ *
  * POST /api/agents/rules-diff
- * 
- * Supports two modes:
- * 1. Single comparison (legacy): Compare current extraction vs one version
- * 2. Multi-version comparison: Compare all versions sequentially
- * 
- * Request Body (Multi-version mode):
+ *
+ * This endpoint forwards ALL provided ruleset versions to the rules-diff agent.
+ * - session_id is the customerId
+ * - Uses RULES_DIFF_API_KEY (NOT LYZR_API_KEY)
+ *
+ * Request Body:
  * {
  *   "projectId": "string",
  *   "customerId": "string",
- *   "versions": [{ version, versionName, createdAt, raw_rules }] // Optional
- * }
- * 
- * Response (Multi-version mode):
- * {
- *   "versions": [{ version, versionName, createdAt }],
- *   "comparisons": [
- *     {
- *       "from": "v1",
- *       "to": "v2",
- *       "results": [
- *         { "tag": "modified|added|removed|unchanged", "previous": "...", "current": "..." }
- *       ]
- *     }
+ *   "versions": [
+ *     { "version": 1, "versionName": "v1", "createdAt": "ISO", "raw_rules": [...] },
+ *     { "version": 2, "versionName": "v2", "createdAt": "ISO", "raw_rules": [...] }
  *   ]
  * }
  */
@@ -80,123 +48,64 @@ export async function POST(req: Request) {
     const body = (await req.json()) as RulesDiffRequest;
 
     if (!body.projectId) {
-      return NextResponse.json(
-        { error: "projectId is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "projectId is required" }, { status: 400 });
     }
 
     if (!body.customerId) {
+      return NextResponse.json({ error: "customerId is required" }, { status: 400 });
+    }
+
+    if (!Array.isArray(body.versions) || body.versions.length === 0) {
+      return NextResponse.json({ error: "versions is required" }, { status: 400 });
+    }
+
+    const apiKey = process.env.RULES_DIFF_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "customerId is required" },
-        { status: 400 }
+        { error: "RULES_DIFF_API_KEY is not configured" },
+        { status: 500 }
       );
     }
 
-    // If versions array provided, do multi-version comparison
-    if (body.versions && body.versions.length > 0) {
-      return await handleMultiVersionComparison(body);
-    }
-
-    // Legacy single comparison mode
-    if (!body.rulesExtractorResponse) {
-      return NextResponse.json(
-        { error: "rulesExtractorResponse or versions is required" },
-        { status: 400 }
-      );
-    }
-
-    // Fetch all versions from DB for multi-version comparison
-    await connectDB();
-    const project = await Project.findOne({ customerId: body.customerId }).select("rulesets").lean();
-
-    if (!project || !project.rulesets || project.rulesets.length === 0) {
-      return NextResponse.json(
-        { error: "No versions found for comparison" },
-        { status: 404 }
-      );
-    }
-
-    // Build versions array with raw_rules
-    const versions: VersionData[] = project.rulesets.map((rs: any) => ({
-      version: rs.version,
-      versionName: rs.versionName,
-      createdAt: rs.createdAt.toISOString(),
-      raw_rules: rs.data.raw_rules || []
-    }));
-
-    // Add current extraction as the latest version
-    const currentRules = typeof body.rulesExtractorResponse === "string" 
-      ? JSON.parse(body.rulesExtractorResponse)
-      : body.rulesExtractorResponse;
-    
-    versions.push({
-      version: versions.length + 1,
-      versionName: "Current",
-      createdAt: new Date().toISOString(),
-      raw_rules: Array.isArray(currentRules) ? currentRules : []
+    const message = JSON.stringify({
+      projectId: body.projectId,
+      customerId: body.customerId,
+      versions: body.versions,
     });
 
-    return await handleMultiVersionComparison({ ...body, versions });
-  } catch (error) {
-    console.error("Rules Diff Agent error:", error);
-    return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : "Internal server error" 
-      },
-      { status: 500 }
-    );
-  }
-}
-
-async function handleMultiVersionComparison(body: RulesDiffRequest): Promise<NextResponse> {
-  const versions = body.versions!;
-
-  // Send all versions data in a single message
-  const message = JSON.stringify({
-    versions: versions.map(v => ({
-      version: v.version,
-      versionName: v.versionName,
-      createdAt: v.createdAt,
-      raw_rules: v.raw_rules
-    }))
-  });
-
-  try {
-    const response = await callLyzrAgent<MultiVersionDiffResponse>({
-      user_id: "harshit@lyzr.ai",
+    const response = await callLyzrAgent({
+      user_id: "mudit@lyzr.ai",
       agent_id: AGENT_ID,
       session_id: body.customerId,
       message,
-      apiKey: process.env.NEW_LYZR_API_KEY,
+      apiKey,
     });
 
-    // Normalize comparison result tags if agent returns different casing
-    const normalized: MultiVersionDiffResponse = {
-      versions: response.versions ?? versions.map(v => ({ version: v.version, versionName: v.versionName, createdAt: v.createdAt })),
-      comparisons: (response.comparisons ?? []).map((c: VersionComparison) => ({
-        from: c.from,
-        to: c.to,
-        results: (c.results ?? []).map((r: ComparisonResult) => ({
-          tag: (["unchanged", "modified", "added", "removed"] as const).includes((r.tag ?? "").toLowerCase() as ComparisonResult["tag"])
-            ? (r.tag!.toLowerCase() as ComparisonResult["tag"])
-            : "unchanged",
-          previous: r.previous ?? null,
-          current: r.current ?? null
-        }))
-      }))
-    };
+    // If the response has a 'response' field (meaning it's a wrapped string), try to parse it
+    if (
+      typeof response === "object" &&
+      response !== null &&
+      "response" in response &&
+      typeof (response as { response?: unknown }).response === "string"
+    ) {
+      const parseResult = tryParseJson((response as { response: string }).response);
 
-    return NextResponse.json(normalized);
+      if (!parseResult.success) {
+        console.error("Failed to parse rules diff response JSON:", parseResult.parseError);
+        console.log("Raw agent response:", parseResult.raw);
+        return NextResponse.json(parseResult, { status: 500 });
+      }
+
+      return NextResponse.json(parseResult.data);
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error("Rules diff agent error (multi-version):", error);
+    console.error("Rules Diff Agent error:", error);
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Rules diff agent failed",
-        versions: versions.map(v => ({ version: v.version, versionName: v.versionName, createdAt: v.createdAt })),
-        comparisons: []
-      },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }
 }
+
