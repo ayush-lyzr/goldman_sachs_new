@@ -177,7 +177,7 @@ function SimulationPageContent() {
           results.push({
             constraint: constraint.constraint,
             count,
-            pdfValues: constraint.pdf_value,
+            pdfValues: constraint.pdf_value ?? [],
           });
 
           // Update results progressively
@@ -188,7 +188,7 @@ function SimulationPageContent() {
           results.push({
             constraint: constraint.constraint,
             count: results.length > 0 ? results[results.length - 1].count : STARTING_UNIVERSE,
-            pdfValues: constraint.pdf_value,
+            pdfValues: constraint.pdf_value ?? [],
           });
           setFilterResults([...results]);
         }

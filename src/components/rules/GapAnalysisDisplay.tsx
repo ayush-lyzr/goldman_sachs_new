@@ -466,18 +466,25 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                             Match
                           </span>
                         </div>
-                        {rule.match_count && (
+                        {rule.match_count != null && rule.match_count !== "" && (
                           <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                             {rule.match_count} matched
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30">
-                        <XCircle className="w-3.5 h-3.5 text-amber-500" />
-                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                          Gap
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30">
+                          <XCircle className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                            Gap
+                          </span>
+                        </div>
+                        {rule.match_count != null && rule.match_count !== "" && (
+                          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                            {rule.match_count} matched
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
