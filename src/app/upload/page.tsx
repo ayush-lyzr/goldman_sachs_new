@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { UploadZone } from "@/components/dashboard/UploadZone";
+import { FileUploadHistory } from "@/components/dashboard/FileUploadHistory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,10 @@ const UploadPage = () => {
 
             {/* Main Content */}
             <div className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <UploadZone />
+                <FileUploadHistory customerId={customerId} />
+              </div>
               {/* Commented out Ruleset Versions Card */}
               {/* <div className="lg:col-span-2 space-y-6">
                 <Card>
@@ -192,10 +197,6 @@ const UploadPage = () => {
                   </CardContent>
                 </Card>
               </div> */}
-
-              <div className="lg:col-span-2 space-y-6">
-                <UploadZone />
-              </div>
 
               <div className="space-y-6">
                 <Card>

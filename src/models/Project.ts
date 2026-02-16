@@ -35,12 +35,21 @@ export interface ISelectedCompany {
   fidessa_catalog: Record<string, string>;
 }
 
+export interface IFileUpload {
+  filename: string;
+  fileType: string;
+  markdown: string;
+  uploadedAt: Date;
+  rulesetVersion?: number; // Link to the ruleset version created from this upload
+}
+
 export interface IProject extends Document {
   name: string;
   customerId: string;
   selectedCompany?: ISelectedCompany;
   createdAt: Date;
   rulesets: IRuleset[];
+  fileUploads: IFileUpload[];
 }
 
 const RulesetSchema = new Schema<IRuleset>(
@@ -83,6 +92,32 @@ const SelectedCompanySchema = new Schema(
   { _id: false }
 );
 
+const FileUploadSchema = new Schema<IFileUpload>(
+  {
+    filename: {
+      type: String,
+      required: true,
+    },
+    fileType: {
+      type: String,
+      required: true,
+    },
+    markdown: {
+      type: String,
+      required: true,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    rulesetVersion: {
+      type: Number,
+      required: false,
+    },
+  },
+  { _id: false }
+);
+
 const ProjectSchema = new Schema<IProject>(
   {
     name: {
@@ -101,6 +136,10 @@ const ProjectSchema = new Schema<IProject>(
     },
     rulesets: {
       type: [RulesetSchema],
+      default: [],
+    },
+    fileUploads: {
+      type: [FileUploadSchema],
       default: [],
     },
   },

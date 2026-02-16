@@ -138,6 +138,15 @@ export async function POST(req: Request) {
 
         project.rulesets.push(newRuleset);
         
+        // Link the latest file upload to this ruleset version
+        if (project.fileUploads && project.fileUploads.length > 0) {
+          const latestUpload = project.fileUploads[project.fileUploads.length - 1];
+          if (latestUpload && !latestUpload.rulesetVersion) {
+            latestUpload.rulesetVersion = nextVersion;
+            project.markModified('fileUploads');
+          }
+        }
+        
         // Mark the rulesets array as modified to ensure Mongoose detects the change
         project.markModified('rulesets');
         

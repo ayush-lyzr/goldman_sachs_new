@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { CheckCircle2, XCircle, Info, ArrowRight, Layers, RefreshCw } from "lucide-react";
+import { CheckCircle2, XCircle, Info, ArrowRight, Layers } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
@@ -133,17 +133,6 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
   const totalCount = mappedRules.length;
   const matchPercentage = totalCount > 0 ? Math.round((matchedCount / totalCount) * 100) : 0;
 
-  // Handle compare with newer version - navigates to upload page
-  const handleCompareWithNewerVersion = () => {
-    // Clear the previous analysis data to allow fresh upload
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem("extractedRules");
-      sessionStorage.removeItem("extractedPDF");
-      sessionStorage.removeItem("mappedRules");
-      sessionStorage.removeItem("gapAnalysis");
-    }
-    router.push("/upload");
-  };
 
   return (
     <div className="space-y-4">
@@ -561,27 +550,6 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
         ))}
       </div>
 
-      {/* Compare with Newer Version Action */}
-      <div className="mt-8 pt-6 border-t border-border/50">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-xl bg-gradient-to-r from-primary/5 via-primary/[0.02] to-primary/5 border border-primary/10">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20">
-              <RefreshCw className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">Compare with Updated Guidelines</h3>
-              <p className="text-sm text-muted-foreground">Upload a newer version of your investment guidelines to compare changes</p>
-            </div>
-          </div>
-          <Button 
-            onClick={handleCompareWithNewerVersion}
-            className="gap-2 px-6 h-11 text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300 whitespace-nowrap"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>Compare with Newer Version</span>
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

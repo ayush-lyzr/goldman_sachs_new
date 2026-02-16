@@ -2,16 +2,20 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, CheckCircle, Loader2, X } from "lucide-react";
+import { Upload, FileText, X } from "lucide-react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
+interface SelectedFile {
+  file: File;
+  id: string;
+}
+
 export function UploadZone() {
   const [isDragging, setIsDragging] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const router = useRouter();
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -22,159 +26,101 @@ export function UploadZone() {
     setIsDragging(false);
   }, []);
 
-  const validateAndSetFile = (file: File) => {
+  const validateFile = (file: File): boolean => {
     const validTypes = [
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ];
-    if (validTypes.includes(file.type)) {
-      setFile(file);
-    } else {
-      alert("Please upload a PDF or DOCX file");
-    }
+    return validTypes.includes(file.type);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      validateAndSetFile(droppedFile);
-    }
-  }, []);
-
-  const handleFileSelect = useCallback(() => {
-    fileInputRef.current?.click();
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    handleFilesAdded(droppedFiles);
   }, []);
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      validateAndSetFile(selectedFile);
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      handleFilesAdded(newFiles);
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const handleFilesAdded = (newFiles: File[]) => {
+    const validFiles = newFiles.filter(validateFile);
+    
+    if (validFiles.length === 0) {
+      alert("Please upload only PDF or DOCX files.");
+      return;
+    }
 
-    setIsUploading(true);
-    try {
-      // Step 1: Extract markdown from PDF
-      const formData = new FormData();
-      formData.append("files", file);
+    if (validFiles.length !== newFiles.length) {
+      alert("Some files were skipped. Please upload only PDF or DOCX files.");
+    }
 
-      const extractResponse = await fetch("https://chicago-cubs.onrender.com/extract-markdown", {
-        method: "POST",
-        headers: {
-          'accept': 'application/json',
-        },
-        body: formData,
-      });
+    const newSelectedFiles: SelectedFile[] = validFiles.map(file => ({
+      file,
+      id: crypto.randomUUID(),
+    }));
+    
+    setSelectedFiles(prev => [...prev, ...newSelectedFiles]);
+  };
 
-      if (!extractResponse.ok) {
-        throw new Error("PDF extraction failed");
-      }
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
+  };
 
-      const extractData = await extractResponse.json();
-      console.log("Extraction successful:", extractData);
+  const removeFile = (fileId: string) => {
+    setSelectedFiles(prev => prev.filter(f => f.id !== fileId));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleStartProcessing = () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select at least one file to process");
+      return;
+    }
+
+    // Save files to sessionStorage for the processing page
+    if (typeof window !== 'undefined') {
+      const filesToSave = selectedFiles.map(f => ({
+        id: f.id,
+        fileName: f.file.name,
+        fileType: f.file.type,
+        fileSize: f.file.size,
+        status: "pending",
+      }));
       
-      if (!extractData.results || extractData.results.length === 0) {
-        throw new Error("No content extracted from PDF");
-      }
-
-      const markdown = extractData.results[0].markdown;
+      sessionStorage.setItem('processingFiles', JSON.stringify(filesToSave));
       
-      // Step 2: Get or create customerId and projectId
-      let customerId = "";
-      let projectId = "";
-      let isNewProject = false;
+      // Store actual File objects temporarily (they'll be retrieved on the processing page)
+      // Note: We'll need to re-select files on the processing page, or we can use a different approach
+      // For now, let's create a simple workaround using FileReader
       
-      if (typeof window !== 'undefined') {
-        const existingCustomerId = sessionStorage.getItem("currentCustomerId");
-        customerId = existingCustomerId || crypto.randomUUID();
-        projectId = sessionStorage.getItem("currentProjectId") || crypto.randomUUID();
-        
-        // If no existing customerId, this is a new project
-        isNewProject = !existingCustomerId;
-        
-        // Store IDs for later use
-        sessionStorage.setItem("currentCustomerId", customerId);
-        sessionStorage.setItem("currentProjectId", projectId);
-      }
-
-      // Step 2.5: Create project in database if new
-      if (isNewProject) {
-        const projectName = file.name.replace(/\.(pdf|docx)$/i, '');
-        
-        const projectResponse = await fetch("/api/projects", {
-          method: "POST",
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: projectName,
-            customerId: customerId,
-          }),
+      const filePromises = selectedFiles.map(selectedFile => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            resolve({
+              id: selectedFile.id,
+              name: selectedFile.file.name,
+              type: selectedFile.file.type,
+              size: selectedFile.file.size,
+              data: e.target?.result,
+            });
+          };
+          reader.readAsDataURL(selectedFile.file);
         });
-
-        if (!projectResponse.ok) {
-          console.error("Failed to create project, continuing anyway");
-        }
-      }
-
-      // Step 3: Send markdown to rules-extractor agent
-      const rulesResponse = await fetch("/api/agents/rules-extractor", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        cache: "no-store",
-        body: JSON.stringify({
-          projectId: projectId,
-          customerId: customerId,
-          extractorResponse: markdown,
-        }),
       });
 
-      if (!rulesResponse.ok) {
-        throw new Error("Rules extraction failed");
-      }
-
-      const rulesData = await rulesResponse.json();
-      console.log("Rules extraction successful:", rulesData);
-      
-      // Check if there was an error parsing the response
-      if (rulesData.error) {
-        console.error("Rules extraction error:", rulesData);
-        throw new Error(`Rules extraction failed: ${rulesData.error}${rulesData.parseError ? ` (${rulesData.parseError})` : ''}`);
-      }
-      
-      // Extract the rules array (agent responses can vary in shape)
-      const parsedRules =
-        Array.isArray(rulesData)
-          ? rulesData
-          : Array.isArray((rulesData as any)?.rules)
-            ? (rulesData as any).rules
-            : Array.isArray((rulesData as any)?.data?.rules)
-              ? (rulesData as any).data.rules
-              : [];
-
-      if (!Array.isArray(parsedRules) || parsedRules.length === 0) {
-        console.warn("[UploadZone] No rules found in extractor response shape:", rulesData);
-      }
-      
-      // Step 4: Store both extraction and rules data
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem("extractedPDF", JSON.stringify(extractData.results[0]));
-        sessionStorage.setItem("extractedRules", JSON.stringify(parsedRules));
-      }
-      
-      router.push("/constraints");
-    } catch (error) {
-      console.error("Error during extraction:", error);
-      alert(error instanceof Error ? error.message : "Failed to process file. Please try again.");
-    } finally {
-      setIsUploading(false);
+      Promise.all(filePromises).then((filesData) => {
+        sessionStorage.setItem('uploadedFilesData', JSON.stringify(filesData));
+        router.push('/upload/processing');
+      });
     }
   };
 
@@ -183,65 +129,98 @@ export function UploadZone() {
       <CardHeader>
         <CardTitle className="text-base">Upload Guidelines</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <input
           type="file"
           ref={fileInputRef}
           className="hidden"
           accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          multiple
           onChange={handleFileInputChange}
         />
-        {!file ? (
+        
+        {selectedFiles.length === 0 ? (
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+            className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
               isDragging ? "border-primary bg-primary/5" : "border-border"
             }`}
           >
-            <Upload className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm font-medium mb-1">Drag & drop PDF or DOCX here</p>
-            <p className="text-xs text-muted-foreground mb-4">or click to browse</p>
-            <Button variant="outline" size="sm" onClick={handleFileSelect}>
-              Select File
+            <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-base font-medium mb-2">Drag & drop PDF or DOCX files here</p>
+            <p className="text-sm text-muted-foreground mb-6">or click to browse (multiple files supported)</p>
+            <Button variant="default" size="default" onClick={handleFileSelect}>
+              Select Files
             </Button>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-success/10 rounded-lg border border-success/20">
-              <FileText className="w-8 h-8 text-success" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{file.name}</p>
-                <p className="text-xs text-muted-foreground">Ready for extraction</p>
-              </div>
-              <div className="flex items-center gap-2">
-                 <Button 
-                   variant="ghost" 
-                   size="icon" 
-                   className="h-8 w-8 hover:bg-success/20"
-                   onClick={() => setFile(null)} 
-                   disabled={isUploading}
-                 >
-                    <X className="w-4 h-4" />
-                 </Button>
-                 <CheckCircle className="w-5 h-5 text-success" />
-              </div>
-            </div>
-            <Button 
-              className="w-full" 
-              onClick={handleUpload}
-              disabled={isUploading}
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                isDragging ? "border-primary bg-primary/5" : "border-border"
+              }`}
             >
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Extracting...
-                </>
-              ) : (
-                "Extract Constraints"
-              )}
-            </Button>
+              <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm font-medium mb-1">Drop more files here</p>
+              <p className="text-xs text-muted-foreground mb-3">or</p>
+              <Button variant="outline" size="sm" onClick={handleFileSelect}>
+                Browse Files
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Selected Files ({selectedFiles.length})</p>
+              {selectedFiles.map((selectedFile) => (
+                <div
+                  key={selectedFile.id}
+                  className="flex items-center justify-between p-3 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{selectedFile.file.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(selectedFile.file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 flex-shrink-0"
+                    onClick={() => removeFile(selectedFile.id)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={handleStartProcessing}
+              >
+                Process {selectedFiles.length} File{selectedFiles.length > 1 ? 's' : ''}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSelectedFiles([]);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+              >
+                Clear All
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

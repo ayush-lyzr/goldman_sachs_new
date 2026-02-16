@@ -7,6 +7,7 @@ import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
 import { ConstraintCard } from "@/components/constraints/ConstraintCard";
 import { RulesVersionTable } from "@/components/comparison/RulesVersionTable";
 import { ExtractedRulesDisplay } from "@/components/constraints/ExtractedRulesDisplay";
+import { MarkdownDisplay } from "@/components/constraints/MarkdownDisplay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -170,6 +171,7 @@ function ConstraintsPageContent() {
   const [generating, setGenerating] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>("");
   const [pdfFilename, setPdfFilename] = useState<string>("");
+  const [extractedMarkdown, setExtractedMarkdown] = useState<string>("");
   const [comparingRules, setComparingRules] = useState(false);
   const [multiVersionDiff, setMultiVersionDiff] = useState<MultiVersionDiffData | null>(null);
   const [showCompareView, setShowCompareView] = useState(false);
@@ -207,6 +209,7 @@ function ConstraintsPageContent() {
           try {
             const pdf = JSON.parse(storedPDF);
             setPdfFilename(pdf.filename || "Document");
+            setExtractedMarkdown(pdf.markdown || "");
           } catch (error) {
             console.error("Error parsing PDF data:", error);
           }
@@ -227,60 +230,8 @@ function ConstraintsPageContent() {
               // Show comparison if there's at least 1 existing version
               hasVersions = data.rulesets && data.rulesets.length > 0;
               setHasExistingVersions(hasVersions);
-
-              // Multi-version comparison: always fetch fresh (no session cache)
-              if (hasVersions && parsedRules.length > 0 && customerId && projectId) {
-                setComparingRules(true);
-                try {
-                  const versionDataPromises = data.rulesets.map(async (rs: { version: number; versionName: string; createdAt: string }) => {
-                    const versionResponse = await fetch(`/api/projects/rulesets/${rs.version}?customerId=${customerId}`, {
-                      cache: "no-store",
-                    });
-                    if (versionResponse.ok) {
-                      const versionData = await versionResponse.json();
-                      return {
-                        version: rs.version,
-                        versionName: rs.versionName,
-                        createdAt: rs.createdAt,
-                        raw_rules: versionData.ruleset.data.raw_rules || []
-                      };
-                    }
-                    return null;
-                  });
-
-                  const allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
-                  const nextVersionNum = allVersionData.length + 1;
-
-                  // Include the current extraction as the next version (v2, v3, ...) so the API compares all versions including the one we just calculated
-                  allVersionData.push({
-                    version: nextVersionNum,
-                    versionName: `v${nextVersionNum}`,
-                    createdAt: new Date().toISOString(),
-                    raw_rules: parsedRules
-                  });
-
-                  const diffResponse = await fetch("/api/agents/rules-diff", {
-                    method: "POST",
-                    headers: { 'Content-Type': 'application/json' },
-                    cache: "no-store",
-                    body: JSON.stringify({
-                      projectId,
-                      customerId,
-                      versions: allVersionData,
-                    }),
-                  });
-
-                  if (diffResponse.ok) {
-                    const diffData = await diffResponse.json();
-                    setMultiVersionDiff(diffData);
-                    setShowCompareView(true);
-                  }
-                } catch (compareError) {
-                  console.error("[constraints] Multi-version comparison failed:", compareError);
-                } finally {
-                  setComparingRules(false);
-                }
-              }
+              
+              // Removed automatic comparison - users can compare files in history component
             }
           } catch (error) {
             console.error("Error checking for existing versions:", error);
@@ -544,9 +495,17 @@ function ConstraintsPageContent() {
                 )}
               </div>
             ) : extractedRules.length > 0 ? (
-              <ExtractedRulesDisplay rules={extractedRules} />
+              <>
+                <ExtractedRulesDisplay rules={extractedRules} />
+                {extractedMarkdown && (
+                  <MarkdownDisplay markdown={extractedMarkdown} filename={pdfFilename} />
+                )}
+              </>
             ) : (
               <div className="space-y-3">
+                {extractedMarkdown && (
+                  <MarkdownDisplay markdown={extractedMarkdown} filename={pdfFilename} />
+                )}
                 {constraints.map((constraint, index) => (
                   <div 
                     key={constraint.id}
