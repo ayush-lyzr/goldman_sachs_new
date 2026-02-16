@@ -1,10 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
-  // Externalize mongoose and mongodb for serverless compatibility
-  serverExternalPackages: ["mongodb", "mongoose"],
+  // Do NOT externalize mongoose/mongodb - Next.js will bundle them with all dependencies
+  // Externalizing causes missing dependency errors (like 'kareem') in Lambda/serverless environments
 };
 
 export default nextConfig;
