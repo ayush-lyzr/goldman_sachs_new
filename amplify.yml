@@ -20,12 +20,9 @@ frontend:
         - echo "=== Building application ==="
         - pnpm run build
   artifacts:
-    baseDirectory: .
+    baseDirectory: .next
     files:
-      - '.next/**/*'
-      - 'node_modules/**/*'
-      - 'package.json'
-      - 'public/**/*'
+      - '**/*'
   cache:
     paths:
       - .pnpm-store/**/*
