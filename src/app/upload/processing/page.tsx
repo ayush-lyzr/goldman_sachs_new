@@ -259,6 +259,7 @@ export default function ProcessingPage() {
           customerId,
           rulesToColumnResponse: rulesToColumnData,
           ...(fidessa_catalog && { fidessa_catalog }),
+          ...(rulesetVersion && { rulesetVersion }), // Pass the specific version to update
         }),
       });
 

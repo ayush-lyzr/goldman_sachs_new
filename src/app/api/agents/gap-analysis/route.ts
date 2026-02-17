@@ -23,6 +23,7 @@ interface GapAnalysisRequest {
   customerId: string;
   rulesToColumnResponse: string | object;
   fidessa_catalog?: FidessaCatalog;
+  rulesetVersion?: number; // Specific version to update with gap analysis
 }
 
 interface ConstraintDelta {
@@ -142,16 +143,29 @@ export async function POST(req: Request) {
       const project = await Project.findOne({ customerId: body.customerId });
       
       if (project) {
-        // Find the latest ruleset to update it with gap analysis data
         if (project.rulesets.length > 0) {
-          const latestRuleset = project.rulesets[project.rulesets.length - 1];
+          // Find the specific ruleset version to update
+          let targetRuleset;
+          if (body.rulesetVersion !== undefined) {
+            // Use the provided version number
+            targetRuleset = project.rulesets.find(rs => rs.version === body.rulesetVersion);
+            if (!targetRuleset) {
+              console.error(`Ruleset version ${body.rulesetVersion} not found for customer ${body.customerId}`);
+            }
+          } else {
+            // Fallback to latest ruleset if no version specified
+            targetRuleset = project.rulesets[project.rulesets.length - 1];
+          }
           
-          // Add gap analysis to the latest ruleset's data
-          latestRuleset.data.gap_analysis = parsedResponse.mapped_rules;
-          
-          await project.save();
-          
-          console.log(`Gap analysis saved successfully to ${latestRuleset.versionName} for customer ${body.customerId}`);
+          if (targetRuleset) {
+            // Add gap analysis to the target ruleset's data
+            targetRuleset.data.gap_analysis = parsedResponse.mapped_rules;
+            project.markModified('rulesets');
+            
+            await project.save();
+            
+            console.log(`Gap analysis saved successfully to ${targetRuleset.versionName} (v${targetRuleset.version}) for customer ${body.customerId}`);
+          }
         } else {
           console.error(`No rulesets found for customer ${body.customerId}. Cannot save gap analysis.`);
         }
