@@ -182,19 +182,20 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
   }, [stats, onStatsCalculated]);
 
   // Current/latest version on the RIGHT (fixed); older versions on the left (scrollable)
+  // Order: v1 | v2 | v3 | v4 (v4 is latest/current, fixed on right)
   const latestVersionObj = data.versions[data.versions.length - 1];
-  const otherVersionObjs = data.versions.slice(0, -1); // older versions, left to right
+  const otherVersionObjs = data.versions.slice(0, -1); // older versions, left to right (v1, v2, v3)
   const versionIndexByName = useMemo(() => {
     return Object.fromEntries(data.versions.map((v, idx) => [v.versionName, idx]));
   }, [data.versions]);
 
   const getCellClass = (tag: string) => {
     const classMap: Record<string, string> = {
-      unchanged: "bg-slate-50 dark:bg-slate-900/30",
-      modified: "bg-amber-50 dark:bg-amber-900/10 border-l-2 border-amber-400",
-      added: "bg-emerald-50 dark:bg-emerald-900/10 border-l-2 border-emerald-400",
-      removed: "bg-rose-50 dark:bg-rose-900/10 border-l-2 border-rose-400",
-      "not-present": "bg-slate-100/50 dark:bg-slate-800/20"
+      unchanged: "bg-white dark:bg-slate-800/20",
+      modified: "bg-amber-50/80 dark:bg-amber-900/20 border-l-2 border-amber-400",
+      added: "bg-emerald-50/80 dark:bg-emerald-900/20 border-l-2 border-emerald-400",
+      removed: "bg-rose-50/80 dark:bg-rose-900/20 border-l-2 border-rose-400",
+      "not-present": "bg-slate-50 dark:bg-slate-700/30"
     };
     return classMap[tag] || classMap.unchanged;
   };
@@ -315,11 +316,11 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
       <div className="space-y-4">
 
       {/* Legend */}
-      <Card className="bg-slate-50/50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-800">
+      <Card className="bg-white dark:bg-slate-800/30 border-slate-200 dark:border-slate-700">
         <CardContent className="p-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-mono font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+              <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
                 Guide
               </span>
 
@@ -328,8 +329,8 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                 onClick={() => setShowUnchangedLines((v) => !v)}
                 className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
                   showUnchangedLines
-                    ? "border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-200"
-                    : "border-slate-200 dark:border-slate-800 bg-transparent text-slate-400 dark:text-slate-500"
+                    ? "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700/40 text-slate-800 dark:text-slate-200"
+                    : "border-slate-200 dark:border-slate-700 bg-transparent text-slate-500 dark:text-slate-400"
                 }`}
               >
                 <span className="inline-flex items-center gap-2">
@@ -343,8 +344,8 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                 onClick={() => setShowAddedLines((v) => !v)}
                 className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
                   showAddedLines
-                    ? "border-emerald-300 dark:border-emerald-900/40 bg-emerald-50/70 dark:bg-emerald-900/10 text-emerald-800 dark:text-emerald-200"
-                    : "border-slate-200 dark:border-slate-800 bg-transparent text-slate-400 dark:text-slate-500"
+                    ? "border-emerald-300 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200"
+                    : "border-slate-200 dark:border-slate-700 bg-transparent text-slate-500 dark:text-slate-400"
                 }`}
               >
                 <span className="inline-flex items-center gap-2">
@@ -357,8 +358,8 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                 onClick={() => setShowRemovedLines((v) => !v)}
                 className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
                   showRemovedLines
-                    ? "border-rose-300 dark:border-rose-900/40 bg-rose-50/70 dark:bg-rose-900/10 text-rose-800 dark:text-rose-200"
-                    : "border-slate-200 dark:border-slate-800 bg-transparent text-slate-400 dark:text-slate-500"
+                    ? "border-rose-300 dark:border-rose-700/50 bg-rose-50 dark:bg-rose-900/20 text-rose-800 dark:text-rose-200"
+                    : "border-slate-200 dark:border-slate-700 bg-transparent text-slate-500 dark:text-slate-400"
                 }`}
               >
                 <span className="inline-flex items-center gap-2">
@@ -366,15 +367,15 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                 </span>
               </button>
 
-              <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+              <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
               <button
                 type="button"
                 onClick={() => setChangedOnly((v) => !v)}
                 className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
                   changedOnly
-                    ? "border-amber-300 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-900/10 text-amber-800 dark:text-amber-200"
-                    : "border-slate-200 dark:border-slate-800 bg-transparent text-slate-600 dark:text-slate-400"
+                    ? "border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200"
+                    : "border-slate-200 dark:border-slate-700 bg-transparent text-slate-600 dark:text-slate-400"
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full ${changedOnly ? "bg-amber-500" : "bg-slate-400 dark:bg-slate-600"}`} />
@@ -383,12 +384,12 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-slate-500 dark:text-slate-400">Sort</span>
+              <span className="text-xs font-mono text-slate-600 dark:text-slate-300">Sort</span>
               <div className="relative">
                 <select
                   value={sortMode}
                   onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
-                  className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/40 px-2 text-xs font-mono text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-700"
+                  className="h-8 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700/40 px-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600"
                 >
                   <option value="most-changed">Most changed</option>
                   <option value="latest-change">Latest change</option>
@@ -401,19 +402,19 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
       </Card>
 
       {/* Table - Single table with sticky left + sticky current (right) for perfect row alignment */}
-      <Card className="border-2 border-slate-200 dark:border-slate-800 overflow-hidden bg-gradient-to-br from-slate-50/80 to-slate-100/50 dark:from-slate-900/40 dark:to-slate-950/60">
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 dark:from-slate-950 dark:to-slate-900 text-white px-6 py-3 border-b border-slate-700">
+      <Card className="border-2 border-slate-200 dark:border-slate-800 overflow-hidden bg-gradient-to-br from-white to-slate-50/80 dark:from-slate-800/50 dark:to-slate-900/60">
+        <div className="bg-gradient-to-r from-slate-700 to-slate-800 dark:from-slate-800 dark:to-slate-900 text-white px-6 py-3 border-b border-slate-600 dark:border-slate-700">
           <h3 className="font-mono font-semibold text-base">
-            Version Comparison ({data.versions.map(v => v.versionName).join(' → ')} — current fixed on right)
+            Version Comparison ({otherVersionObjs.map(v => v.versionName).join(' → ')} → <span className="text-emerald-300 font-bold">{latestVersionObj.versionName}</span> — current fixed on right)
           </h3>
         </div>
 
-        <div className="relative overflow-x-auto bg-white/30 dark:bg-slate-950/20">
+        <div className="relative overflow-x-auto bg-white dark:bg-slate-800/30">
           <table className="w-full border-collapse" style={{ minWidth: "900px" }}>
             <thead>
-              <tr className="bg-gradient-to-b from-slate-100/90 to-slate-50/70 dark:from-slate-800/60 dark:to-slate-900/40 border-b border-slate-200 dark:border-slate-800">
+              <tr className="bg-gradient-to-b from-slate-50 to-white dark:from-slate-700/50 dark:to-slate-800/40 border-b border-slate-200 dark:border-slate-700">
                 <th
-                  className="sticky left-0 z-30 bg-gradient-to-b from-slate-100/90 to-slate-50/70 dark:from-slate-800/60 dark:to-slate-900/40 text-left px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-r border-slate-200 dark:border-slate-800"
+                  className="sticky left-0 z-30 bg-gradient-to-b from-slate-50 to-white dark:from-slate-700/50 dark:to-slate-800/40 text-left px-5 py-4 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider border-r border-slate-200 dark:border-slate-700"
                   style={{ width: "200px" }}
                 >
                   Constraint
@@ -422,16 +423,16 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                 {otherVersionObjs.map((versionObj, i) => (
                   <th
                     key={`version-${versionObj.version}`}
-                    className="text-center px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-r border-slate-200 dark:border-slate-800 min-w-[300px]"
+                    className="text-center px-5 py-4 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider border-r border-slate-200 dark:border-slate-700 min-w-[300px]"
                   >
                     {versionObj.versionName}
                     {i < otherVersionObjs.length - 1 && (
-                      <span className="ml-2 text-slate-400 dark:text-slate-600">→</span>
+                      <span className="ml-2 text-slate-400 dark:text-slate-500">→</span>
                     )}
                   </th>
                 ))}
 
-                <th className="sticky right-0 z-30 bg-gradient-to-b from-slate-200/90 to-slate-100/70 dark:from-slate-700/70 dark:to-slate-800/50 text-center px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider min-w-[400px] border-l-2 border-slate-300 dark:border-slate-600">
+                <th className="sticky right-0 z-30 bg-gradient-to-b from-slate-100 to-slate-50 dark:from-slate-600/50 dark:to-slate-700/40 text-center px-5 py-4 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider min-w-[400px] border-l-2 border-slate-300 dark:border-slate-600">
                   {latestVersionObj.versionName}
                   <Badge className="ml-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[9px] px-2 py-0.5 font-bold">
                     Current
@@ -444,9 +445,9 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
               {displayedRows.map((row) => (
                 <tr
                   key={row.constraintTitle}
-                  className="border-b border-slate-200/60 dark:border-slate-800/60 hover:bg-slate-100/40 dark:hover:bg-slate-900/40 transition-colors bg-white/20 dark:bg-slate-950/10"
+                  className="border-b border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors bg-white dark:bg-slate-800/20"
                 >
-                  <td className="sticky left-0 z-20 bg-gradient-to-r from-slate-100/95 to-slate-50/80 dark:from-slate-900/90 dark:to-slate-800/70 backdrop-blur-sm px-5 py-4 font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
+                  <td className="sticky left-0 z-20 bg-gradient-to-r from-white to-slate-50 dark:from-slate-800/40 dark:to-slate-700/30 backdrop-blur-sm px-5 py-4 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-slate-700">
                     <div className="space-y-2">
                       <div className="leading-snug">{row.constraintTitle}</div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -492,7 +493,7 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                     return (
                       <td
                         key={`cell-${row.constraintTitle}-${versionObj.version}`}
-                        className={`px-5 py-4 text-sm text-slate-700 dark:text-slate-300 align-top border-r border-slate-200 dark:border-slate-800 ${getCellClass(
+                        className={`px-5 py-4 text-sm text-slate-800 dark:text-slate-200 align-top border-r border-slate-200 dark:border-slate-700 ${getCellClass(
                           status
                         )}`}
                       >
@@ -548,7 +549,7 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                     const visibleLines = filterLines(cell?.lines ?? []);
                     return (
                       <td
-                        className={`sticky right-0 z-20 bg-gradient-to-l from-slate-200/95 to-slate-100/80 dark:from-slate-800/90 dark:to-slate-700/70 backdrop-blur-sm px-5 py-4 text-sm text-slate-700 dark:text-slate-300 align-top border-l-2 border-slate-300 dark:border-slate-600 ${getCellClass(
+                        className={`sticky right-0 z-20 bg-gradient-to-l from-slate-100 to-white dark:from-slate-700/40 dark:to-slate-600/30 backdrop-blur-sm px-5 py-4 text-sm text-slate-800 dark:text-slate-200 align-top border-l-2 border-slate-300 dark:border-slate-600 ${getCellClass(
                           status
                         )}`}
                       >

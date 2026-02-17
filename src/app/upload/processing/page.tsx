@@ -415,6 +415,35 @@ export default function ProcessingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, viewMode]);
 
+  // Helper function to poll for comparison job results
+  const pollComparisonJob = async (jobId: string, maxAttempts: number = 60): Promise<any> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const pollResponse = await fetch(`/api/agents/rules-diff?jobId=${jobId}`, {
+        cache: "no-store",
+      });
+
+      if (!pollResponse.ok) {
+        throw new Error(`Failed to poll job status: ${pollResponse.statusText}`);
+      }
+
+      const jobStatus = await pollResponse.json();
+
+      if (jobStatus.status === "completed") {
+        return jobStatus.result;
+      }
+
+      if (jobStatus.status === "failed") {
+        throw new Error(jobStatus.error || "Comparison job failed");
+      }
+
+      // Wait before next poll (exponential backoff: 1s, 2s, 3s, ... up to 5s)
+      const waitTime = Math.min(1000 * (attempt + 1), 5000);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    throw new Error("Comparison job timed out");
+  };
+
   const handleCompareAllVersions = async (newFiles: FileProcessingState[]) => {
     setLoadingComparison(true);
     setShowComparison(true);
@@ -471,7 +500,10 @@ export default function ProcessingPage() {
         return null;
       });
 
-      const allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+      let allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+
+      // Ensure versions are sorted by version number (v1, v2, v3, v4...) with latest last
+      allVersionData = allVersionData.sort((a: any, b: any) => (a.version || 0) - (b.version || 0));
 
       if (allVersionData.length < 2) {
         console.log("[ProcessingPage] Could not load enough ruleset data for comparison");
@@ -479,7 +511,13 @@ export default function ProcessingPage() {
         return;
       }
 
-      // Call comparison API with all versions
+      const latestVersion = allVersionData[allVersionData.length - 1];
+      if (latestVersion) {
+        console.log(`[ProcessingPage] Versions to compare: ${allVersionData.map((v: any) => v.versionName).join(' → ')} (${latestVersion.versionName} is current/latest)`);
+      }
+
+      // Start comparison job
+      console.log(`[ProcessingPage] Starting comparison job for ${allVersionData.length} versions`);
       const diffResponse = await fetch("/api/agents/rules-diff", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
@@ -491,17 +529,27 @@ export default function ProcessingPage() {
         }),
       });
 
-      if (diffResponse.ok) {
-        const diffData = await diffResponse.json();
-        setComparisonData(diffData);
-        console.log(`[ProcessingPage] Comparison completed with ${allVersionData.length} versions`);
-      } else {
+      if (!diffResponse.ok) {
         const errorData = await diffResponse.json().catch(() => ({}));
-        console.error(`[ProcessingPage] Comparison failed:`, errorData.error || 'Unknown error');
-        setShowComparison(false);
+        throw new Error(errorData.error || 'Failed to start comparison job');
       }
+
+      const jobData = await diffResponse.json();
+      const jobId = jobData.jobId;
+
+      if (!jobId) {
+        throw new Error("No jobId returned from comparison API");
+      }
+
+      console.log(`[ProcessingPage] Comparison job ${jobId} started, polling for results...`);
+
+      // Poll for results
+      const diffData = await pollComparisonJob(jobId);
+      setComparisonData(diffData);
+      console.log(`[ProcessingPage] Comparison completed with ${allVersionData.length} versions`);
     } catch (error) {
       console.error("[ProcessingPage] Error comparing all versions:", error);
+      alert(error instanceof Error ? error.message : "Failed to compare versions");
       setShowComparison(false);
     } finally {
       setLoadingComparison(false);
@@ -555,7 +603,10 @@ export default function ProcessingPage() {
         return null;
       });
 
-      const allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+      let allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+
+      // Ensure versions are sorted by version number (v1, v2, v3, v4...) with latest last
+      allVersionData = allVersionData.sort((a: any, b: any) => (a.version || 0) - (b.version || 0));
 
       if (allVersionData.length < 2) {
         alert("Could not load ruleset data for comparison");
@@ -563,7 +614,13 @@ export default function ProcessingPage() {
         return;
       }
 
-      // Call comparison API
+      const latestVersion = allVersionData[allVersionData.length - 1];
+      if (latestVersion) {
+        console.log(`[ProcessingPage] Versions to compare: ${allVersionData.map((v: any) => v.versionName).join(' → ')} (${latestVersion.versionName} is current/latest)`);
+      }
+
+      // Start comparison job
+      console.log(`[ProcessingPage] Starting comparison job for ${allVersionData.length} versions`);
       const diffResponse = await fetch("/api/agents/rules-diff", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
@@ -575,17 +632,26 @@ export default function ProcessingPage() {
         }),
       });
 
-      if (diffResponse.ok) {
-        const diffData = await diffResponse.json();
-        setComparisonData(diffData);
-      } else {
+      if (!diffResponse.ok) {
         const errorData = await diffResponse.json().catch(() => ({}));
-        alert(`Comparison failed: ${errorData.error || 'Unknown error'}`);
-        setShowComparison(false);
+        throw new Error(errorData.error || 'Failed to start comparison job');
       }
+
+      const jobData = await diffResponse.json();
+      const jobId = jobData.jobId;
+
+      if (!jobId) {
+        throw new Error("No jobId returned from comparison API");
+      }
+
+      console.log(`[ProcessingPage] Comparison job ${jobId} started, polling for results...`);
+
+      // Poll for results
+      const diffData = await pollComparisonJob(jobId);
+      setComparisonData(diffData);
     } catch (error) {
       console.error("Error comparing files:", error);
-      alert("Failed to compare files");
+      alert(error instanceof Error ? error.message : "Failed to compare files");
       setShowComparison(false);
     } finally {
       setLoadingComparison(false);

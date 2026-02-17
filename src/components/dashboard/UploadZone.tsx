@@ -185,7 +185,7 @@ export function UploadZone() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{selectedFile.file.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {(selectedFile.file.size / 1024 / 1024).toFixed(2)} MB
+                        {(selectedFile.file.size / 1024).toFixed(2)} KB
                       </p>
                     </div>
                   </div>

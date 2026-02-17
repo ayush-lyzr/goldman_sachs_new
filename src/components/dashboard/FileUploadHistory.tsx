@@ -396,14 +396,23 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
         return null;
       });
 
-      const allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+      let allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+
+      // Ensure versions are sorted by version number (v1, v2, v3, v4...) with latest last
+      allVersionData = allVersionData.sort((a: any, b: any) => (a.version || 0) - (b.version || 0));
 
       if (allVersionData.length < 2) {
         alert("Could not load ruleset data for comparison");
         return;
       }
 
-      // Call comparison API
+      const latestVersion = allVersionData[allVersionData.length - 1];
+      if (latestVersion) {
+        console.log(`[FileUploadHistory] Versions to compare: ${allVersionData.map((v: any) => v.versionName).join(' → ')} (${latestVersion.versionName} is current/latest)`);
+      }
+
+      // Start comparison job
+      console.log(`[FileUploadHistory] Starting comparison job for ${allVersionData.length} versions`);
       const diffResponse = await fetch("/api/agents/rules-diff", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
@@ -415,12 +424,52 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
         }),
       });
 
-      if (diffResponse.ok) {
-        const diffData = await diffResponse.json();
-        setComparisonData(diffData);
-      } else {
+      if (!diffResponse.ok) {
         const errorData = await diffResponse.json().catch(() => ({}));
-        alert(`Comparison failed: ${errorData.error || 'Unknown error'}`);
+        throw new Error(errorData.error || 'Failed to start comparison job');
+      }
+
+      const jobData = await diffResponse.json();
+      const jobId = jobData.jobId;
+
+      if (!jobId) {
+        throw new Error("No jobId returned from comparison API");
+      }
+
+      console.log(`[FileUploadHistory] Comparison job ${jobId} started, polling for results...`);
+
+      // Poll for results
+      const maxAttempts = 60;
+      let comparisonCompleted = false;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const pollResponse = await fetch(`/api/agents/rules-diff?jobId=${jobId}`, {
+          cache: "no-store",
+        });
+
+        if (!pollResponse.ok) {
+          throw new Error(`Failed to poll job status: ${pollResponse.statusText}`);
+        }
+
+        const jobStatus = await pollResponse.json();
+
+        if (jobStatus.status === "completed") {
+          setComparisonData(jobStatus.result);
+          console.log(`[FileUploadHistory] Comparison completed successfully`);
+          comparisonCompleted = true;
+          break;
+        }
+
+        if (jobStatus.status === "failed") {
+          throw new Error(jobStatus.error || "Comparison job failed");
+        }
+
+        // Wait before next poll (exponential backoff: 1s, 2s, 3s, ... up to 5s)
+        const waitTime = Math.min(1000 * (attempt + 1), 5000);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+
+      if (!comparisonCompleted) {
+        throw new Error("Comparison job timed out");
       }
     } catch (error) {
       console.error("Error comparing files:", error);
