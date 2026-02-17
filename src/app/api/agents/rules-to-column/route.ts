@@ -21,6 +21,8 @@ interface MappedRule {
 
 interface RulesToColumnResponse {
   mapped_rules: MappedRule[];
+  version?: number; // Version assigned to this ruleset
+  versionName?: string; // e.g., "v1", "v2"
 }
 
 /**
@@ -101,6 +103,9 @@ export async function POST(req: Request) {
     }
 
     // Save the ruleset to the project with versioning
+    let assignedVersion: number | undefined;
+    let assignedVersionName: string | undefined;
+    
     try {
       await connectDB();
       
@@ -146,6 +151,10 @@ export async function POST(req: Request) {
 
         // Create version name
         const versionName = `v${nextVersion}`;
+        
+        // Store the assigned version to return in the response
+        assignedVersion = nextVersion;
+        assignedVersionName = versionName;
         
         // Check if a ruleset with this version already exists
         const existingRuleset = project.rulesets.find(rs => rs.version === nextVersion);
@@ -220,7 +229,14 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json(parsedResponse);
+    // Return the response with the assigned version
+    const responseWithVersion: RulesToColumnResponse = {
+      ...parsedResponse,
+      version: assignedVersion,
+      versionName: assignedVersionName,
+    };
+    
+    return NextResponse.json(responseWithVersion);
   } catch (error) {
     console.error("Rules to Column Agent error:", error);
     return NextResponse.json(

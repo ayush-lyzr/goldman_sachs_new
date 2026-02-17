@@ -129,13 +129,17 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
       .join(' ');
   };
 
-  // Sanitize value by removing HTML-like tags and cleaning up the text
+  // Sanitize value by removing HTML-like tags, template literals, and cleaning up the text
   const sanitizeValue = (value: string): string => {
     if (!value) return value;
+    // Remove template literals (e.g., {{ fidessa_catalog }}, {{ variable }})
+    let cleaned = value.replace(/\{\{[^}]*\}\}/g, '').trim();
     // Remove HTML-like tags (e.g., <keyword>, </keyword>)
-    let cleaned = value.replace(/<[^>]*>/g, '').trim();
+    cleaned = cleaned.replace(/<[^>]*>/g, '').trim();
     // Remove any remaining angle brackets that might be part of the text
     cleaned = cleaned.replace(/[<>]/g, '');
+    // Remove extra whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
     return cleaned;
   };
 

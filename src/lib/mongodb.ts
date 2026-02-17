@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+// Explicitly import mongodb to ensure it's bundled with mongoose
+import "mongodb";
 
 const MONGODB_URL = process.env.MONGODB_URL ?? process.env.mongodb_url;
 const DB_NAME = process.env.DB_NAME ?? process.env.db_name;

@@ -2,8 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  // Do NOT externalize mongoose/mongodb - Next.js will bundle them with all dependencies
-  // Externalizing causes missing dependency errors (like 'kareem') in Lambda/serverless environments
+  // For serverless deployments, use standalone output to bundle all dependencies
+  // This creates a self-contained build with all node_modules included
+  output: 'standalone',
+  // Do NOT externalize mongoose/mongodb - they must be bundled
+  serverExternalPackages: [],
+  // Turbopack config (Next.js 16 uses Turbopack by default)
+  turbopack: {},
 };
 
 export default nextConfig;

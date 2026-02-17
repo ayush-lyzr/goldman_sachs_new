@@ -228,20 +228,10 @@ export default function ProcessingPage() {
 
       const mappedRules = rulesToColumnData.mapped_rules || [];
       
-      // Fetch the project to get the latest ruleset version
-      let rulesetVersion: number | undefined;
-      try {
-        const projectResponse = await fetch(`/api/projects?customerId=${customerId}`);
-        if (projectResponse.ok) {
-          const projectsData = await projectResponse.json();
-          const project = projectsData.projects?.find((p: any) => p.customerId === customerId);
-          if (project?.latestRuleset) {
-            rulesetVersion = project.latestRuleset.version;
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching project version:", err);
-      }
+      // Get the version directly from the rules-to-column response
+      // This ensures each file gets its correct version, especially during concurrent uploads
+      const rulesetVersion = rulesToColumnData.version;
+      console.log(`File "${fileState.file.name}" assigned version: ${rulesetVersion}`);
 
       let selectedCompany = null;
       if (typeof window !== 'undefined') {
