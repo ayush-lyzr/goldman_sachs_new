@@ -147,14 +147,20 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
   };
 
   const handleViewRules = async (upload: FileUpload) => {
-    // Try to find rulesetVersion if not directly available
+    // Use file upload order: first file = v1, second = v2, etc.
+    const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
     let versionToUse = upload.rulesetVersion || upload.ruleset?.version;
     
-    // Try to find from available rulesets
+    // If no version is set, calculate based on file upload order (1-indexed)
+    if (!versionToUse && uploadIndex >= 0) {
+      versionToUse = uploadIndex + 1;
+    }
+    
+    // Fallback: try to find from available rulesets
     if (!versionToUse && availableRulesets.length > 0) {
-      const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
       if (uploadIndex >= 0 && uploadIndex < availableRulesets.length) {
-        versionToUse = availableRulesets[availableRulesets.length - 1 - uploadIndex].version;
+        // Match by index: first file (index 0) = first ruleset (v1), etc.
+        versionToUse = availableRulesets[uploadIndex]?.version || availableRulesets[availableRulesets.length - 1].version;
       } else if (availableRulesets.length > 0) {
         versionToUse = availableRulesets[availableRulesets.length - 1].version;
       }
@@ -213,13 +219,20 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
   };
 
   const handleViewGapAnalysis = async (upload: FileUpload) => {
+    // Use file upload order: first file = v1, second = v2, etc.
+    const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
     let versionToUse = upload.rulesetVersion || upload.ruleset?.version;
     
-    // Try to find from available rulesets
+    // If no version is set, calculate based on file upload order (1-indexed)
+    if (!versionToUse && uploadIndex >= 0) {
+      versionToUse = uploadIndex + 1;
+    }
+    
+    // Fallback: try to find from available rulesets
     if (!versionToUse && availableRulesets.length > 0) {
-      const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
       if (uploadIndex >= 0 && uploadIndex < availableRulesets.length) {
-        versionToUse = availableRulesets[availableRulesets.length - 1 - uploadIndex].version;
+        // Match by index: first file (index 0) = first ruleset (v1), etc.
+        versionToUse = availableRulesets[uploadIndex]?.version || availableRulesets[availableRulesets.length - 1].version;
       } else if (availableRulesets.length > 0) {
         versionToUse = availableRulesets[availableRulesets.length - 1].version;
       }
@@ -233,8 +246,10 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
     setSelectedUpload(upload);
     setViewMode("gapAnalysis");
     setLoadingRules(true);
+    setGapAnalysis([]); // Clear previous data
 
     try {
+      console.log(`[Gap Analysis] Fetching ruleset version ${versionToUse} for customer ${customerId}`);
       const response = await fetch(
         `/api/projects/rulesets/${versionToUse}?customerId=${customerId}`,
         { cache: "no-store" }
@@ -242,27 +257,52 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
 
       if (response.ok) {
         const data = await response.json();
-        const gap = data.ruleset?.data?.gap_analysis || [];
+        console.log("[Gap Analysis] API Response:", data);
+        console.log("[Gap Analysis] Ruleset data:", data.ruleset?.data);
+        
+        // Try multiple possible paths for gap_analysis
+        const gap = data.ruleset?.data?.gap_analysis || 
+                   data.ruleset?.data?.gapAnalysis ||
+                   data.gap_analysis ||
+                   [];
+        
+        console.log("[Gap Analysis] Extracted gap analysis:", gap);
+        console.log("[Gap Analysis] Gap analysis length:", gap.length);
+        
+        if (gap.length === 0) {
+          console.warn("[Gap Analysis] No gap analysis data found in response");
+          console.warn("[Gap Analysis] Full data structure:", JSON.stringify(data, null, 2));
+        }
+        
         setGapAnalysis(gap);
       } else {
-        alert("Failed to load gap analysis. Please try again.");
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[Gap Analysis] API Error:", response.status, errorData);
+        alert(`Failed to load gap analysis: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error("Error loading gap analysis:", error);
-      alert("Error loading gap analysis. Please try again.");
+      console.error("[Gap Analysis] Error loading gap analysis:", error);
+      alert("Error loading gap analysis. Please check console for details.");
     } finally {
       setLoadingRules(false);
     }
   };
 
   const handleViewMappedRules = async (upload: FileUpload) => {
+    // Use file upload order: first file = v1, second = v2, etc.
+    const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
     let versionToUse = upload.rulesetVersion || upload.ruleset?.version;
     
-    // Try to find from available rulesets
+    // If no version is set, calculate based on file upload order (1-indexed)
+    if (!versionToUse && uploadIndex >= 0) {
+      versionToUse = uploadIndex + 1;
+    }
+    
+    // Fallback: try to find from available rulesets
     if (!versionToUse && availableRulesets.length > 0) {
-      const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
       if (uploadIndex >= 0 && uploadIndex < availableRulesets.length) {
-        versionToUse = availableRulesets[availableRulesets.length - 1 - uploadIndex].version;
+        // Match by index: first file (index 0) = first ruleset (v1), etc.
+        versionToUse = availableRulesets[uploadIndex]?.version || availableRulesets[availableRulesets.length - 1].version;
       } else if (availableRulesets.length > 0) {
         versionToUse = availableRulesets[availableRulesets.length - 1].version;
       }
@@ -315,14 +355,20 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
 
       // Fetch full ruleset data for each upload
       const versionDataPromises = uploads.map(async (upload) => {
-        // Try to find rulesetVersion
+        // Use file upload order: first file = v1, second = v2, etc.
+        const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
         let versionToUse = upload.rulesetVersion || upload.ruleset?.version;
         
-        // Try to find from available rulesets
+        // If no version is set, calculate based on file upload order (1-indexed)
+        if (!versionToUse && uploadIndex >= 0) {
+          versionToUse = uploadIndex + 1;
+        }
+        
+        // Fallback: try to find from available rulesets
         if (!versionToUse && availableRulesets.length > 0) {
-          const uploadIndex = fileUploads.findIndex(u => u.filename === upload.filename);
           if (uploadIndex >= 0 && uploadIndex < availableRulesets.length) {
-            versionToUse = availableRulesets[availableRulesets.length - 1 - uploadIndex].version;
+            // Match by index: first file (index 0) = first ruleset (v1), etc.
+            versionToUse = availableRulesets[uploadIndex]?.version || availableRulesets[availableRulesets.length - 1].version;
           } else if (availableRulesets.length > 0) {
             versionToUse = availableRulesets[availableRulesets.length - 1].version;
           }
@@ -495,8 +541,18 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
           ) : gapAnalysis.length > 0 ? (
             <GapAnalysisDisplay mappedRules={gapAnalysis} />
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              No gap analysis found for this upload
+            <div className="text-center py-12 space-y-4">
+              <div className="text-muted-foreground">
+                No gap analysis found for this upload
+              </div>
+              <div className="text-xs text-muted-foreground/70">
+                This may mean gap analysis hasn't been generated yet, or the ruleset version doesn't contain gap analysis data.
+              </div>
+              {selectedUpload?.rulesetVersion && (
+                <div className="text-xs text-muted-foreground/50 mt-2">
+                  Ruleset Version: {selectedUpload.rulesetVersion}
+                </div>
+              )}
             </div>
           )}
         </CardContent>

@@ -72,10 +72,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Calculate the next version number
-    const nextVersion = project.rulesets.length > 0
-      ? Math.max(...project.rulesets.map(rs => rs.version)) + 1
-      : 1;
+    // Calculate version based on file upload order: first file = v1, second = v2, etc.
+    // Use the number of file uploads as the version number (1-indexed)
+    const fileUploadsCount = project.fileUploads?.length || 0;
+    const nextVersion = fileUploadsCount > 0 ? fileUploadsCount : 1;
 
     // Create version name
     const versionName = body.versionName || `v${nextVersion}`;

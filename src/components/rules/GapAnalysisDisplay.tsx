@@ -129,6 +129,16 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
       .join(' ');
   };
 
+  // Sanitize value by removing HTML-like tags and cleaning up the text
+  const sanitizeValue = (value: string): string => {
+    if (!value) return value;
+    // Remove HTML-like tags (e.g., <keyword>, </keyword>)
+    let cleaned = value.replace(/<[^>]*>/g, '').trim();
+    // Remove any remaining angle brackets that might be part of the text
+    cleaned = cleaned.replace(/[<>]/g, '');
+    return cleaned;
+  };
+
   const matchedCount = mappedRules.filter(r => r.matched).length;
   const totalCount = mappedRules.length;
   const matchPercentage = totalCount > 0 ? Math.round((matchedCount / totalCount) * 100) : 0;
@@ -358,7 +368,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                                 variant="outline"
                                 className="text-[11px] font-medium px-2 py-0.5 transition-all duration-300 bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
                               >
-                                {value}
+                                {sanitizeValue(value)}
                               </Badge>
                             ))}
                           </>
@@ -383,9 +393,9 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                           return <span className="text-xs text-muted-foreground/50 italic">—</span>;
                         }
                         
-                        // Split comma-separated values and flatten the array
+                        // Split comma-separated values and flatten the array, sanitizing each value
                         const allValues = sentinelSourceValues.flatMap(value => 
-                          value.split(',').map(v => v.trim()).filter(v => v)
+                          value.split(',').map(v => sanitizeValue(v.trim())).filter(v => v)
                         );
 
                         const legacyPdf = rule.pdf_value ?? [];
@@ -432,7 +442,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                                 }
                               `}
                             >
-                              {value}
+                              {sanitizeValue(value)}
                               {isNeutral ? null : isExcludedInPdf ? (
                                 <XCircle className="w-3 h-3 ml-1 inline" />
                               ) : (

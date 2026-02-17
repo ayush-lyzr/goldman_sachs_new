@@ -401,19 +401,19 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
       </Card>
 
       {/* Table - Single table with sticky left + sticky current (right) for perfect row alignment */}
-      <Card className="border-2 border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="bg-slate-900 dark:bg-slate-950 text-white px-6 py-3 border-b border-slate-700">
+      <Card className="border-2 border-slate-200 dark:border-slate-800 overflow-hidden bg-gradient-to-br from-slate-50/80 to-slate-100/50 dark:from-slate-900/40 dark:to-slate-950/60">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 dark:from-slate-950 dark:to-slate-900 text-white px-6 py-3 border-b border-slate-700">
           <h3 className="font-mono font-semibold text-base">
             Version Comparison ({data.versions.map(v => v.versionName).join(' → ')} — current fixed on right)
           </h3>
         </div>
 
-        <div className="relative overflow-x-auto">
+        <div className="relative overflow-x-auto bg-white/30 dark:bg-slate-950/20">
           <table className="w-full border-collapse" style={{ minWidth: "900px" }}>
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+              <tr className="bg-gradient-to-b from-slate-100/90 to-slate-50/70 dark:from-slate-800/60 dark:to-slate-900/40 border-b border-slate-200 dark:border-slate-800">
                 <th
-                  className="sticky left-0 z-30 bg-slate-50 dark:bg-slate-900/50 text-left px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-r border-slate-200 dark:border-slate-800"
+                  className="sticky left-0 z-30 bg-gradient-to-b from-slate-100/90 to-slate-50/70 dark:from-slate-800/60 dark:to-slate-900/40 text-left px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-r border-slate-200 dark:border-slate-800"
                   style={{ width: "200px" }}
                 >
                   Constraint
@@ -431,7 +431,7 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                   </th>
                 ))}
 
-                <th className="sticky right-0 z-30 bg-slate-100 dark:bg-slate-800/80 text-center px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider min-w-[400px] border-l-2 border-slate-300 dark:border-slate-600">
+                <th className="sticky right-0 z-30 bg-gradient-to-b from-slate-200/90 to-slate-100/70 dark:from-slate-700/70 dark:to-slate-800/50 text-center px-5 py-4 font-mono text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider min-w-[400px] border-l-2 border-slate-300 dark:border-slate-600">
                   {latestVersionObj.versionName}
                   <Badge className="ml-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[9px] px-2 py-0.5 font-bold">
                     Current
@@ -444,9 +444,9 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
               {displayedRows.map((row) => (
                 <tr
                   key={row.constraintTitle}
-                  className="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors"
+                  className="border-b border-slate-200/60 dark:border-slate-800/60 hover:bg-slate-100/40 dark:hover:bg-slate-900/40 transition-colors bg-white/20 dark:bg-slate-950/10"
                 >
-                  <td className="sticky left-0 z-20 bg-slate-100/80 dark:bg-slate-900/80 backdrop-blur-sm px-5 py-4 font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
+                  <td className="sticky left-0 z-20 bg-gradient-to-r from-slate-100/95 to-slate-50/80 dark:from-slate-900/90 dark:to-slate-800/70 backdrop-blur-sm px-5 py-4 font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
                     <div className="space-y-2">
                       <div className="leading-snug">{row.constraintTitle}</div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -548,7 +548,7 @@ export function RulesVersionTable({ data, onStatsCalculated }: RulesVersionTable
                     const visibleLines = filterLines(cell?.lines ?? []);
                     return (
                       <td
-                        className={`sticky right-0 z-20 bg-slate-100/80 dark:bg-slate-800/60 backdrop-blur-sm px-5 py-4 text-sm text-slate-700 dark:text-slate-300 align-top border-l-2 border-slate-300 dark:border-slate-600 ${getCellClass(
+                        className={`sticky right-0 z-20 bg-gradient-to-l from-slate-200/95 to-slate-100/80 dark:from-slate-800/90 dark:to-slate-700/70 backdrop-blur-sm px-5 py-4 text-sm text-slate-700 dark:text-slate-300 align-top border-l-2 border-slate-300 dark:border-slate-600 ${getCellClass(
                           status
                         )}`}
                       >
