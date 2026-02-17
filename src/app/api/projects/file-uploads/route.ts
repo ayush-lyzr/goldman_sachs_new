@@ -70,22 +70,15 @@ export async function POST(req: Request) {
           console.log("[file-uploads POST] Initialized fileUploads array");
         }
 
-        // Check if file upload already exists (by unique fileId first, then fallback to filename)
-        let existingUploadIndex = project.fileUploads.findIndex(
+        // Check if file upload already exists by unique fileId ONLY
+        // DO NOT fallback to filename - each upload should be a separate record
+        const existingUploadIndex = project.fileUploads.findIndex(
           (upload) => upload.fileId === body.fileId
         );
-        
-        // Fallback to filename if fileId not found (for backward compatibility)
-        if (existingUploadIndex < 0) {
-          existingUploadIndex = project.fileUploads.findIndex(
-            (upload) => upload.filename === body.filename
-          );
-        }
 
         if (existingUploadIndex >= 0) {
-          // Update existing file upload
-          console.log("[file-uploads POST] Updating existing file upload at index:", existingUploadIndex);
-          project.fileUploads[existingUploadIndex].fileId = body.fileId; // Ensure fileId is set
+          // Update existing file upload (only happens if the SAME fileId is sent again)
+          console.log("[file-uploads POST] Updating existing file upload with fileId:", body.fileId);
           if (body.rulesetVersion !== undefined) {
             project.fileUploads[existingUploadIndex].rulesetVersion = body.rulesetVersion;
           }
@@ -144,10 +137,10 @@ export async function POST(req: Request) {
       throw lastError;
     }
 
-    // Get the final file upload data for response
+    // Get the final file upload data for response (by unique fileId)
     const finalProject = await Project.findOne({ customerId: body.customerId });
     const finalFileUpload = finalProject?.fileUploads?.find(
-      (upload) => upload.filename === body.filename
+      (upload) => upload.fileId === body.fileId
     );
 
     if (!finalFileUpload) {

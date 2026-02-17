@@ -180,19 +180,6 @@ export default function ProcessingPage() {
         markdown 
       });
 
-      // Save file upload early with unique file ID
-      await fetch("/api/projects/file-uploads", {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId,
-          fileId: uniqueFileId,
-          filename: fileState.file.name,
-          fileType: fileState.file.type || "application/pdf",
-          markdown,
-        }),
-      });
-
       // Step 2: Extract rules
       updateFileState(fileId, { status: "rules-mapping" });
       const rulesResponse = await fetch("/api/agents/rules-extractor", {
@@ -292,7 +279,8 @@ export default function ProcessingPage() {
 
       const gapAnalysis = gapAnalysisData.mapped_rules || [];
 
-      // Update file upload with ruleset version (file upload was already saved after extraction)
+      // Save file upload with all data including ruleset version
+      // This is the ONLY place we save file uploads - ensures no duplicate records
       if (rulesetVersion) {
         await fetch("/api/projects/file-uploads", {
           method: "POST",
