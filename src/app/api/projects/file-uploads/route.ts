@@ -4,6 +4,7 @@ import { Project } from "@/models/Project";
 
 interface SaveFileUploadRequest {
   customerId: string;
+  fileId: string; // Unique identifier for this file upload
   filename: string;
   fileType: string;
   markdown: string;
@@ -63,28 +64,28 @@ export async function POST(req: Request) {
           );
         }
 
-        const fileUpload = {
-          filename: body.filename,
-          fileType: body.fileType,
-          markdown: body.markdown,
-          uploadedAt: new Date(),
-          rulesetVersion: body.rulesetVersion,
-        };
-
         // Ensure fileUploads array exists
         if (!project.fileUploads) {
           project.fileUploads = [];
           console.log("[file-uploads POST] Initialized fileUploads array");
         }
 
-        // Check if file upload already exists (by filename)
-        const existingUploadIndex = project.fileUploads.findIndex(
-          (upload) => upload.filename === body.filename
+        // Check if file upload already exists (by unique fileId first, then fallback to filename)
+        let existingUploadIndex = project.fileUploads.findIndex(
+          (upload) => upload.fileId === body.fileId
         );
+        
+        // Fallback to filename if fileId not found (for backward compatibility)
+        if (existingUploadIndex < 0) {
+          existingUploadIndex = project.fileUploads.findIndex(
+            (upload) => upload.filename === body.filename
+          );
+        }
 
         if (existingUploadIndex >= 0) {
           // Update existing file upload
           console.log("[file-uploads POST] Updating existing file upload at index:", existingUploadIndex);
+          project.fileUploads[existingUploadIndex].fileId = body.fileId; // Ensure fileId is set
           if (body.rulesetVersion !== undefined) {
             project.fileUploads[existingUploadIndex].rulesetVersion = body.rulesetVersion;
           }
@@ -97,7 +98,15 @@ export async function POST(req: Request) {
           }
         } else {
           // Create new file upload
-          console.log("[file-uploads POST] Creating new file upload. Current count:", project.fileUploads.length);
+          console.log("[file-uploads POST] Creating new file upload with ID:", body.fileId);
+          const fileUpload = {
+            fileId: body.fileId,
+            filename: body.filename,
+            fileType: body.fileType,
+            markdown: body.markdown,
+            uploadedAt: new Date(),
+            rulesetVersion: body.rulesetVersion,
+          };
           project.fileUploads.push(fileUpload);
         }
 
@@ -165,6 +174,72 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("Save file upload error:", error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Internal server error"
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/projects/file-uploads?customerId={customerId}
+ * 
+ * Deletes all file uploads and their associated rulesets for a project
+ */
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const customerId = searchParams.get("customerId");
+    const projectName = searchParams.get("projectName"); // Alternative: delete by project name
+
+    if (!customerId && !projectName) {
+      return NextResponse.json(
+        { error: "customerId or projectName is required" },
+        { status: 400 }
+      );
+    }
+
+    await connectDB();
+
+    // Find project by customerId or name
+    const project = projectName
+      ? await Project.findOne({ name: projectName })
+      : await Project.findOne({ customerId });
+
+    if (!project) {
+      return NextResponse.json(
+        { error: "Project not found" },
+        { status: 404 }
+      );
+    }
+
+    const fileUploadsCount = project.fileUploads?.length || 0;
+    const rulesetsCount = project.rulesets?.length || 0;
+    console.log(`[file-uploads DELETE] Found project: ${project.name}, deleting ${fileUploadsCount} file uploads and ${rulesetsCount} rulesets`);
+
+    // Delete ALL rulesets (not just those associated with file uploads)
+    // This ensures a clean slate when deleting all files
+    project.rulesets = [];
+    project.markModified('rulesets');
+
+    // Clear all file uploads
+    project.fileUploads = [];
+    project.markModified('fileUploads');
+
+    await project.save();
+
+    console.log(`[file-uploads DELETE] Successfully deleted all files and ${rulesetsCount} rulesets for project: ${project.name}`);
+
+    return NextResponse.json({
+      success: true,
+      message: `Deleted ${fileUploadsCount} file uploads and ${rulesetsCount} rulesets`,
+      deletedFiles: fileUploadsCount,
+      deletedRulesets: rulesetsCount,
+    });
+  } catch (error) {
+    console.error("Delete file uploads error:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Internal server error"

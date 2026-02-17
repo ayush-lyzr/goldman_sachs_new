@@ -10,7 +10,8 @@ interface RulesToColumnRequest {
   projectId: string;
   customerId: string;
   rulesExtractorResponse: string | object;
-  filename?: string; // Optional - used to find the file upload and determine version
+  fileId?: string; // Unique file ID to identify the file upload
+  filename?: string; // Optional - used for logging and fallback
 }
 
 interface MappedRule {
@@ -106,48 +107,58 @@ export async function POST(req: Request) {
     let assignedVersion: number | undefined;
     let assignedVersionName: string | undefined;
     
-    try {
-      await connectDB();
-      
-      console.log(`[rules-to-column] Looking for project with customerId: ${body.customerId}`);
-      const project = await Project.findOne({ customerId: body.customerId });
+    // Retry logic for handling concurrent updates
+    const maxRetries = 5;
+    let retryCount = 0;
+    let saveSuccess = false;
+    
+    while (!saveSuccess && retryCount < maxRetries) {
+      try {
+        await connectDB();
+        
+        console.log(`[rules-to-column] Looking for project with customerId: ${body.customerId} (attempt ${retryCount + 1})`);
+        const project = await Project.findOne({ customerId: body.customerId });
       
       if (project) {
         console.log(`[rules-to-column] Found project: ${project.name}, current rulesets count: ${project.rulesets?.length || 0}`);
         
-        // Calculate version based on file upload order: first file = v1, second = v2, etc.
-        // If filename is provided, find the file upload and use its index in the array
-        // Otherwise, use the total count (for backward compatibility)
-        let nextVersion: number;
+        // Find the file upload by unique fileId FIRST
         let fileUpload = null;
-        
-        if (body.filename && project.fileUploads && project.fileUploads.length > 0) {
-          // Find the file upload by filename
-          const fileUploadIndex = project.fileUploads.findIndex(
+        if (body.fileId && project.fileUploads && project.fileUploads.length > 0) {
+          fileUpload = project.fileUploads.find(
+            (upload) => upload.fileId === body.fileId
+          );
+        } else if (body.filename && project.fileUploads && project.fileUploads.length > 0) {
+          // Fallback: Find by filename if fileId not provided
+          fileUpload = project.fileUploads.find(
             (upload) => upload.filename === body.filename
           );
-          if (fileUploadIndex >= 0) {
-            fileUpload = project.fileUploads[fileUploadIndex];
-            // If file upload already has a rulesetVersion, use that instead of creating a new one
-            if (fileUpload.rulesetVersion) {
-              nextVersion = fileUpload.rulesetVersion;
-              console.log(`[rules-to-column] File upload "${body.filename}" already has rulesetVersion ${nextVersion}. Updating existing ruleset.`);
-            } else {
-              // Use index + 1 (1-indexed) as the version
-              nextVersion = fileUploadIndex + 1;
-              console.log(`[rules-to-column] Found file upload "${body.filename}" at index ${fileUploadIndex}, assigning version v${nextVersion}`);
-            }
-          } else {
-            // File upload not found, use total count
-            nextVersion = project.fileUploads.length;
-            console.log(`[rules-to-column] File upload "${body.filename}" not found, using total count: v${nextVersion}`);
-          }
-        } else {
-          // No filename provided, use total count (backward compatibility)
-          const fileUploadsCount = project.fileUploads?.length || 0;
-          nextVersion = fileUploadsCount > 0 ? fileUploadsCount : 1;
-          console.log(`[rules-to-column] No filename provided, using total count: v${nextVersion}`);
         }
+        
+        // CRITICAL: If this file already has a version, ALWAYS use it (no new versions)
+        let nextVersion: number;
+        if (fileUpload && fileUpload.rulesetVersion) {
+          nextVersion = fileUpload.rulesetVersion;
+          console.log(`[rules-to-column] File ID "${body.fileId}" already has version ${nextVersion}. RETURNING EXISTING VERSION - NO NEW VERSION WILL BE CREATED.`);
+          
+          // Return immediately with existing version - don't create/update anything
+          assignedVersion = nextVersion;
+          assignedVersionName = `v${nextVersion}`;
+          saveSuccess = true;
+          break; // Exit retry loop immediately
+        }
+        
+        // File doesn't have a version yet - assign one based on database
+        // Find the highest version number from existing rulesets
+        let maxVersion = 0;
+        if (project.rulesets && project.rulesets.length > 0) {
+          maxVersion = Math.max(...project.rulesets.map(rs => rs.version || 0));
+        }
+        nextVersion = maxVersion + 1;
+        console.log(`[rules-to-column] Current max version in database: ${maxVersion}`);
+        console.log(`[rules-to-column] Assigning NEW version ${nextVersion} to file ID "${body.fileId}" (${body.filename})`);
+        console.log(`[rules-to-column] THIS IS A NEW VERSION - will create new ruleset`);
+
 
         // Create version name
         const versionName = `v${nextVersion}`;
@@ -160,19 +171,13 @@ export async function POST(req: Request) {
         const existingRuleset = project.rulesets.find(rs => rs.version === nextVersion);
         
         if (existingRuleset) {
-          console.log(`[rules-to-column] Ruleset version ${nextVersion} already exists. Updating existing ruleset instead of creating duplicate.`);
-          
-          // Update existing ruleset instead of creating a new one
-          existingRuleset.data.mapped_rules = parsedResponse.mapped_rules || [];
-          const rawRules = typeof body.rulesExtractorResponse === "object" 
-            ? (body.rulesExtractorResponse as { rules?: Array<{ title: string; rules: string[] }> }).rules
-            : undefined;
-          if (rawRules) {
-            existingRuleset.data.raw_rules = rawRules;
-          }
-          project.markModified('rulesets');
+          console.log(`[rules-to-column] ERROR: Ruleset v${nextVersion} already exists! This should not happen.`);
+          console.log(`[rules-to-column] This means version assignment logic is broken or API was called multiple times.`);
+          // Don't update or create - just skip to avoid duplicates
+          saveSuccess = true;
+          break;
         } else {
-          console.log(`[rules-to-column] Assigning version ${versionName} based on file upload order`);
+          console.log(`[rules-to-column] Creating new ruleset ${versionName}`);
 
           // Extract raw_rules from the request
           const rawRules = typeof body.rulesExtractorResponse === "object" 
@@ -180,6 +185,7 @@ export async function POST(req: Request) {
             : undefined;
 
           console.log(`[rules-to-column] Creating ${versionName} with mapped_rules: ${parsedResponse.mapped_rules?.length || 0}, raw_rules: ${rawRules?.length || 0}`);
+          console.log(`[rules-to-column] Total rulesets before adding: ${project.rulesets.length}`);
 
           // Add the new ruleset
           const newRuleset = {
@@ -193,21 +199,14 @@ export async function POST(req: Request) {
           };
 
           project.rulesets.push(newRuleset);
+          console.log(`[rules-to-column] Total rulesets after adding: ${project.rulesets.length}, versions: ${project.rulesets.map(r => r.version).join(', ')}`);
         }
         
         // Link the file upload to this ruleset version (if not already linked)
-        if (body.filename && fileUpload && !fileUpload.rulesetVersion) {
+        if (fileUpload && !fileUpload.rulesetVersion) {
           fileUpload.rulesetVersion = nextVersion;
           project.markModified('fileUploads');
-          console.log(`[rules-to-column] Linked file upload "${body.filename}" to version ${nextVersion}`);
-        } else if (!body.filename && project.fileUploads && project.fileUploads.length > 0) {
-          // Fallback: link the latest file upload (backward compatibility)
-          const latestUpload = project.fileUploads[project.fileUploads.length - 1];
-          if (latestUpload && !latestUpload.rulesetVersion) {
-            latestUpload.rulesetVersion = nextVersion;
-            project.markModified('fileUploads');
-            console.log(`[rules-to-column] Linked latest file upload to version ${nextVersion}`);
-          }
+          console.log(`[rules-to-column] Linked file upload (ID: ${body.fileId || 'unknown'}, name: "${body.filename}") to version ${nextVersion}`);
         }
         
         // Mark the rulesets array as modified to ensure Mongoose detects the change
@@ -216,18 +215,40 @@ export async function POST(req: Request) {
         await project.save();
         
         console.log(`[rules-to-column] Ruleset saved successfully: ${versionName} for customer ${body.customerId}. Total rulesets: ${project.rulesets.length}`);
+        saveSuccess = true;
       } else {
         console.error(`[rules-to-column] Project not found for customerId: ${body.customerId}`);
+        saveSuccess = true; // Don't retry if project not found
       }
-    } catch (saveError) {
+    } catch (saveError: any) {
+      retryCount++;
+      
+      // Check if it's a version conflict error
+      const isVersionError = saveError?.name === 'VersionError' || 
+                            saveError?.message?.includes('No matching document found');
+      
+      if (isVersionError && retryCount < maxRetries) {
+        console.warn(`[rules-to-column] Version conflict detected (attempt ${retryCount}/${maxRetries}). Retrying...`);
+        // Wait before retrying with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retryCount - 1)));
+        continue;
+      }
+      
       // Log detailed error information
       console.error("[rules-to-column] Error saving ruleset:", saveError);
       console.error("[rules-to-column] Error details:", {
         customerId: body.customerId,
         message: saveError instanceof Error ? saveError.message : String(saveError),
         stack: saveError instanceof Error ? saveError.stack : undefined,
+        retryCount,
       });
+      
+      // If we've exhausted retries or it's not a version error, stop retrying
+      if (!isVersionError || retryCount >= maxRetries) {
+        saveSuccess = true; // Exit the retry loop
+      }
     }
+  }
 
     // Return the response with the assigned version
     const responseWithVersion: RulesToColumnResponse = {

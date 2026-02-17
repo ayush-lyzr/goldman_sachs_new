@@ -137,44 +137,80 @@ export async function POST(req: Request) {
     }
 
     // Save the gap analysis to the project with versioning
-    try {
-      await connectDB();
-      
-      const project = await Project.findOne({ customerId: body.customerId });
-      
-      if (project) {
-        if (project.rulesets.length > 0) {
-          // Find the specific ruleset version to update
-          let targetRuleset;
-          if (body.rulesetVersion !== undefined) {
-            // Use the provided version number
-            targetRuleset = project.rulesets.find(rs => rs.version === body.rulesetVersion);
-            if (!targetRuleset) {
-              console.error(`Ruleset version ${body.rulesetVersion} not found for customer ${body.customerId}`);
+    // Retry logic for handling concurrent updates
+    const maxRetries = 5;
+    let retryCount = 0;
+    let saveSuccess = false;
+    
+    while (!saveSuccess && retryCount < maxRetries) {
+      try {
+        await connectDB();
+        
+        console.log(`[gap-analysis] Looking for project with customerId: ${body.customerId} (attempt ${retryCount + 1})`);
+        const project = await Project.findOne({ customerId: body.customerId });
+        
+        if (project) {
+          if (project.rulesets.length > 0) {
+            // Find the specific ruleset version to update
+            let targetRuleset;
+            if (body.rulesetVersion !== undefined) {
+              // Use the provided version number
+              targetRuleset = project.rulesets.find(rs => rs.version === body.rulesetVersion);
+              if (!targetRuleset) {
+                console.error(`Ruleset version ${body.rulesetVersion} not found for customer ${body.customerId}`);
+              }
+            } else {
+              // Fallback to latest ruleset if no version specified
+              targetRuleset = project.rulesets[project.rulesets.length - 1];
+            }
+            
+            if (targetRuleset) {
+              // Add gap analysis to the target ruleset's data
+              targetRuleset.data.gap_analysis = parsedResponse.mapped_rules;
+              project.markModified('rulesets');
+              
+              await project.save();
+              
+              console.log(`Gap analysis saved successfully to ${targetRuleset.versionName} (v${targetRuleset.version}) for customer ${body.customerId}`);
+              saveSuccess = true;
+            } else {
+              saveSuccess = true; // No target ruleset, don't retry
             }
           } else {
-            // Fallback to latest ruleset if no version specified
-            targetRuleset = project.rulesets[project.rulesets.length - 1];
-          }
-          
-          if (targetRuleset) {
-            // Add gap analysis to the target ruleset's data
-            targetRuleset.data.gap_analysis = parsedResponse.mapped_rules;
-            project.markModified('rulesets');
-            
-            await project.save();
-            
-            console.log(`Gap analysis saved successfully to ${targetRuleset.versionName} (v${targetRuleset.version}) for customer ${body.customerId}`);
+            console.error(`No rulesets found for customer ${body.customerId}. Cannot save gap analysis.`);
+            saveSuccess = true; // No rulesets, don't retry
           }
         } else {
-          console.error(`No rulesets found for customer ${body.customerId}. Cannot save gap analysis.`);
+          console.error(`Project not found for customerId: ${body.customerId}`);
+          saveSuccess = true; // Project not found, don't retry
         }
-      } else {
-        console.error(`Project not found for customerId: ${body.customerId}`);
+      } catch (saveError: any) {
+        retryCount++;
+        
+        // Check if it's a version conflict error
+        const isVersionError = saveError?.name === 'VersionError' || 
+                              saveError?.message?.includes('No matching document found');
+        
+        if (isVersionError && retryCount < maxRetries) {
+          console.warn(`[gap-analysis] Version conflict detected (attempt ${retryCount}/${maxRetries}). Retrying...`);
+          // Wait before retrying with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retryCount - 1)));
+          continue;
+        }
+        
+        // Log but don't fail the request if saving fails
+        console.error("Error saving gap analysis:", saveError);
+        console.error("Error details:", {
+          customerId: body.customerId,
+          rulesetVersion: body.rulesetVersion,
+          retryCount,
+        });
+        
+        // If we've exhausted retries or it's not a version error, stop retrying
+        if (!isVersionError || retryCount >= maxRetries) {
+          saveSuccess = true; // Exit the retry loop
+        }
       }
-    } catch (saveError) {
-      // Log but don't fail the request if saving fails
-      console.error("Error saving gap analysis:", saveError);
     }
 
     return NextResponse.json(parsedResponse);

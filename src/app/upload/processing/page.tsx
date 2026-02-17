@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, CheckCircle, Loader2, X, Eye, GitCompare, Upload, ChevronDown, ChevronUp, Layers, BarChart3 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ExtractedRulesDisplay } from "@/components/constraints/ExtractedRulesDisplay";
 import { MarkdownDisplay } from "@/components/constraints/MarkdownDisplay";
@@ -36,6 +36,9 @@ export default function ProcessingPage() {
   const [showComparison, setShowComparison] = useState(false);
   const [loadingComparison, setLoadingComparison] = useState(false);
   const [viewMode, setViewMode] = useState<"comparison" | "gapAnalysis">("comparison");
+  
+  // Track which files have been processed to prevent duplicates (React StrictMode causes useEffect to run twice)
+  const processedFilesRef = useRef<Set<string>>(new Set());
 
   // Load files from sessionStorage on mount
   useEffect(() => {
@@ -60,15 +63,24 @@ export default function ProcessingPage() {
               });
           });
 
-          Promise.all(filePromises).then((restoredFiles) => {
+          Promise.all(filePromises).then(async (restoredFiles) => {
             setFiles(restoredFiles);
             
-            // Start processing files
-            restoredFiles.forEach((fileState: FileProcessingState) => {
-              if (fileState.status === "pending") {
-                processFileAsync(fileState.id, fileState);
+            // Process files sequentially (one after another) to ensure proper versioning
+            // and avoid database version conflicts
+            for (const fileState of restoredFiles) {
+              // Skip if already processed (React StrictMode can cause useEffect to run twice)
+              if (processedFilesRef.current.has(fileState.id)) {
+                console.log(`[ProcessingPage] Skipping already processed file: ${fileState.id}`);
+                continue;
               }
-            });
+              
+              if (fileState.status === "pending") {
+                processedFilesRef.current.add(fileState.id);
+                console.log(`[ProcessingPage] Processing file: ${fileState.id} (${fileState.file.name})`);
+                await processFileAsync(fileState.id, fileState);
+              }
+            }
           });
         } catch (error) {
           console.error("Error loading files:", error);
@@ -139,6 +151,10 @@ export default function ProcessingPage() {
         // If we can't find the project, we'll use the UUID from sessionStorage as fallback
       }
 
+      // Generate a unique file ID for this upload
+      const uniqueFileId = `${Date.now()}-${crypto.randomUUID()}`;
+      console.log(`Processing file with unique ID: ${uniqueFileId}`);
+      
       // Step 1: Extract markdown
       updateFileState(fileId, { status: "extracting", showDetails: true });
       const formData = new FormData();
@@ -164,12 +180,13 @@ export default function ProcessingPage() {
         markdown 
       });
 
-      // Save file upload early to get its index for version assignment
+      // Save file upload early with unique file ID
       await fetch("/api/projects/file-uploads", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId,
+          fileId: uniqueFileId,
           filename: fileState.file.name,
           fileType: fileState.file.type || "application/pdf",
           markdown,
@@ -205,7 +222,7 @@ export default function ProcessingPage() {
 
       // Step 3: Map rules to columns
       // Send the full rules-extractor response as rulesExtractorResponse
-      // Also send filename so we can find the file upload and use its index as version
+      // Also send fileId so we can find the file upload and assign version
       const rulesToColumnResponse = await fetch("/api/agents/rules-to-column", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
@@ -213,7 +230,8 @@ export default function ProcessingPage() {
           rulesExtractorResponse: rulesData, 
           customerId, 
           projectId,
-          filename: fileState.file.name, // Pass filename to identify the file upload
+          fileId: uniqueFileId, // Pass unique file ID to identify the file upload
+          filename: fileState.file.name, // Also pass filename for logging
         }),
       });
 
@@ -281,6 +299,7 @@ export default function ProcessingPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             customerId,
+            fileId: uniqueFileId,
             filename: fileState.file.name,
             fileType: fileState.file.type || "application/pdf",
             markdown,
@@ -567,6 +586,11 @@ export default function ProcessingPage() {
                     <CardTitle className="text-lg truncate">{fileState.file.name}</CardTitle>
                     <div className="flex items-center gap-2 mt-2">
                       {getStatusBadge(fileState.status)}
+                      {fileState.rulesetVersion && (
+                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono">
+                          v{fileState.rulesetVersion}
+                        </Badge>
+                      )}
                     </div>
                     {fileState.error && (
                       <p className="text-sm text-destructive mt-2">{fileState.error}</p>
@@ -667,7 +691,14 @@ export default function ProcessingPage() {
                   {/* Completed State - Show gap analysis in gap analysis mode */}
                   {fileState.status === "completed" && viewMode === "gapAnalysis" && fileState.gapAnalysis && fileState.gapAnalysis.length > 0 && (
                     <div className="space-y-4 pt-4 border-t">
-                      <h4 className="text-lg font-semibold">{fileState.file.name} - Gap Analysis</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-lg font-semibold">{fileState.file.name} - Gap Analysis</h4>
+                        {fileState.rulesetVersion && (
+                          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono">
+                            v{fileState.rulesetVersion}
+                          </Badge>
+                        )}
+                      </div>
                       <GapAnalysisDisplay mappedRules={fileState.gapAnalysis} />
                     </div>
                   )}
