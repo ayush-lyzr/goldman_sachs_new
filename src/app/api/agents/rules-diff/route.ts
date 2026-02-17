@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { callLyzrAgent } from "@/lib/lyzr";
 import { tryParseJson } from "@/lib/utils";
+import { connectDB } from "@/lib/mongodb";
+import ComparisonJob from "@/models/ComparisonJob";
 
 export const runtime = "nodejs";
 
@@ -24,28 +26,6 @@ interface RulesDiffRequest {
   versions: RulesVersionPayload[];
 }
 
-interface ComparisonJob {
-  jobId: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  result?: any;
-  error?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// In-memory job store (for production, use Redis or database)
-const jobStore = new Map<string, ComparisonJob>();
-
-// Clean up old jobs (older than 1 hour)
-setInterval(() => {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  for (const [jobId, job] of jobStore.entries()) {
-    if (job.createdAt < oneHourAgo) {
-      jobStore.delete(jobId);
-    }
-  }
-}, 5 * 60 * 1000); // Run cleanup every 5 minutes
-
 /**
  * Process comparison job asynchronously
  */
@@ -53,15 +33,18 @@ async function processComparisonJob(
   jobId: string,
   body: RulesDiffRequest
 ): Promise<void> {
-  const job = jobStore.get(jobId);
-  if (!job) {
-    return;
-  }
-
   try {
-    job.status = "processing";
-    job.updatedAt = new Date();
-    jobStore.set(jobId, job);
+    // Connect to database
+    await connectDB();
+
+    // Update job status to processing
+    await ComparisonJob.findOneAndUpdate(
+      { jobId },
+      {
+        status: "processing",
+        updatedAt: new Date(),
+      }
+    );
 
     const apiKey = process.env.LYZR_API_KEY;
     if (!apiKey) {
@@ -105,18 +88,32 @@ async function processComparisonJob(
     }
 
     // Update job with result
-    job.status = "completed";
-    job.result = parsedResult;
-    job.updatedAt = new Date();
-    jobStore.set(jobId, job);
+    await ComparisonJob.findOneAndUpdate(
+      { jobId },
+      {
+        status: "completed",
+        result: parsedResult,
+        updatedAt: new Date(),
+      }
+    );
 
     console.log(`[rules-diff] Comparison job ${jobId} completed successfully`);
   } catch (error) {
     console.error(`[rules-diff] Comparison job ${jobId} failed:`, error);
-    job.status = "failed";
-    job.error = error instanceof Error ? error.message : "Unknown error";
-    job.updatedAt = new Date();
-    jobStore.set(jobId, job);
+    
+    // Update job with error
+    try {
+      await ComparisonJob.findOneAndUpdate(
+        { jobId },
+        {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+          updatedAt: new Date(),
+        }
+      );
+    } catch (updateError) {
+      console.error(`[rules-diff] Failed to update job ${jobId} with error status:`, updateError);
+    }
   }
 }
 
@@ -133,6 +130,9 @@ async function processComparisonJob(
  */
 export async function POST(req: Request) {
   try {
+    // Connect to database
+    await connectDB();
+
     const body = (await req.json()) as RulesDiffRequest;
 
     if (!body.projectId) {
@@ -150,15 +150,15 @@ export async function POST(req: Request) {
     // Generate unique job ID
     const jobId = `${body.customerId}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Create job record
-    const job: ComparisonJob = {
+    // Create job record in database
+    const job = new ComparisonJob({
       jobId,
+      projectId: body.projectId,
+      customerId: body.customerId,
       status: "pending",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    });
 
-    jobStore.set(jobId, job);
+    await job.save();
 
     // Start processing asynchronously (don't await)
     processComparisonJob(jobId, body).catch((error) => {
@@ -184,6 +184,9 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
+    // Connect to database
+    await connectDB();
+
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get("jobId");
 
@@ -191,7 +194,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "jobId query parameter is required" }, { status: 400 });
     }
 
-    const job = jobStore.get(jobId);
+    const job = await ComparisonJob.findOne({ jobId });
 
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
