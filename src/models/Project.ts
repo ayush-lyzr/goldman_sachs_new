@@ -36,7 +36,7 @@ export interface ISelectedCompany {
 }
 
 export interface IFileUpload {
-  fileId: string; // Unique identifier for this file upload
+  fileId?: string; // Unique identifier for this file upload (optional for backwards compatibility)
   filename: string;
   fileType: string;
   markdown: string;
@@ -97,7 +97,7 @@ const FileUploadSchema = new Schema<IFileUpload>(
   {
     fileId: {
       type: String,
-      required: true,
+      required: false, // Optional to support old records without fileId
       unique: false, // Unique within project, not globally
     },
     filename: {

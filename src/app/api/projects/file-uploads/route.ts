@@ -29,15 +29,16 @@ export async function POST(req: Request) {
       hasRulesetVersion: !!body.rulesetVersion,
     });
 
-    if (!body.customerId || !body.filename || !body.fileType || !body.markdown) {
+    if (!body.customerId || !body.filename || !body.fileType || !body.markdown || !body.fileId) {
       console.error("[file-uploads POST] Missing required fields:", {
         hasCustomerId: !!body.customerId,
         hasFilename: !!body.filename,
         hasFileType: !!body.fileType,
         hasMarkdown: !!body.markdown,
+        hasFileId: !!body.fileId,
       });
       return NextResponse.json(
-        { error: "customerId, filename, fileType, and markdown are required" },
+        { error: "customerId, fileId, filename, fileType, and markdown are required" },
         { status: 400 }
       );
     }
@@ -68,6 +69,20 @@ export async function POST(req: Request) {
         if (!project.fileUploads) {
           project.fileUploads = [];
           console.log("[file-uploads POST] Initialized fileUploads array");
+        }
+
+        // Backfill fileId for old records that don't have it
+        // This ensures backwards compatibility with records created before fileId was added
+        let needsBackfill = false;
+        for (let i = 0; i < project.fileUploads.length; i++) {
+          if (!project.fileUploads[i].fileId) {
+            // Generate a fileId for old records using timestamp and random string
+            project.fileUploads[i].fileId = `legacy-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            needsBackfill = true;
+          }
+        }
+        if (needsBackfill) {
+          console.log("[file-uploads POST] Backfilled fileId for old records");
         }
 
         // Check if file upload already exists by unique fileId ONLY
@@ -282,6 +297,7 @@ export async function GET(req: Request) {
         : null;
 
       return {
+        fileId: upload.fileId, // May be undefined for old records
         filename: upload.filename,
         fileType: upload.fileType,
         markdown: upload.markdown,
