@@ -266,23 +266,26 @@ export default function ProcessingPage() {
       const rulesetVersion = rulesToColumnData.version;
       console.log(`File "${fileState.file.name}" assigned version: ${rulesetVersion}`);
 
-      let selectedCompany = null;
-      if (typeof window !== 'undefined') {
-        const storedCompany = sessionStorage.getItem("selectedCompany");
-        if (storedCompany) {
-          try {
-            selectedCompany = JSON.parse(storedCompany);
-          } catch (err) {
-            console.error("Error parsing selected company:", err);
-          }
-        }
-      }
-
       // Step 4: Gap analysis
       updateFileState(fileId, { status: "gap-analysis", mappedRules, rulesetVersion });
       
-      // Extract fidessa_catalog from selectedCompany if available
-      const fidessa_catalog = selectedCompany?.fidessa_catalog || undefined;
+      // Get fidessa_catalog from selectedCompany stored in sessionStorage
+      let fidessa_catalog: Record<string, string> | undefined = undefined;
+      if (typeof window !== 'undefined') {
+        const storedCompany = sessionStorage.getItem("currentSelectedCompany");
+        if (storedCompany) {
+          try {
+            const selectedCompany = JSON.parse(storedCompany);
+            // Extract fidessa_catalog from the selectedCompany object
+            fidessa_catalog = selectedCompany?.fidessa_catalog;
+            if (fidessa_catalog) {
+              console.log(`[ProcessingPage] Using fidessa_catalog for file "${fileState.file.name}":`, fidessa_catalog);
+            }
+          } catch (err) {
+            console.error("[ProcessingPage] Error parsing selected company:", err);
+          }
+        }
+      }
       
       const gapAnalysisResponse = await fetch("/api/agents/gap-analysis", {
         method: "POST",

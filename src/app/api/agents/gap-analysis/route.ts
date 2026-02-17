@@ -114,7 +114,9 @@ export async function POST(req: Request) {
       agentRequest.system_prompt_variables = {
         fidessa_catalog: catalogString,
       };
-      console.log("Gap Analysis: Using customer fidessa_catalog:", body.fidessa_catalog);
+      console.log("[gap-analysis] Using customer fidessa_catalog:", body.fidessa_catalog);
+    } else {
+      console.log("[gap-analysis] No fidessa_catalog provided - gap analysis will proceed without customer catalog");
     }
 
     const response = await callLyzrAgent<GapAnalysisResponse>(agentRequest);
