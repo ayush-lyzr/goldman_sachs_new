@@ -39,6 +39,8 @@ export default function ProcessingPage() {
   
   // Track which files have been processed to prevent duplicates (React StrictMode causes useEffect to run twice)
   const processedFilesRef = useRef<Set<string>>(new Set());
+  // Track if there were existing files in the project before this upload
+  const hadExistingFilesRef = useRef<boolean>(false);
 
   // Load files from sessionStorage on mount
   useEffect(() => {
@@ -65,6 +67,32 @@ export default function ProcessingPage() {
 
           Promise.all(filePromises).then(async (restoredFiles) => {
             setFiles(restoredFiles);
+            
+            // Check if there are existing files in the project before processing
+            const customerId = typeof window !== 'undefined' 
+              ? sessionStorage.getItem("currentCustomerId") || ""
+              : "";
+            
+            if (customerId) {
+              try {
+                const existingFilesResponse = await fetch(
+                  `/api/projects/file-uploads?customerId=${customerId}`,
+                  { cache: "no-store" }
+                );
+                if (existingFilesResponse.ok) {
+                  const existingFilesData = await existingFilesResponse.json();
+                  const existingFiles = existingFilesData.fileUploads || [];
+                  // Check if there are existing files with versions
+                  const hasExistingVersions = existingFiles.some(
+                    (f: any) => f.rulesetVersion !== undefined && f.rulesetVersion !== null
+                  );
+                  hadExistingFilesRef.current = hasExistingVersions;
+                  console.log(`[ProcessingPage] Existing files in project: ${existingFiles.length}, with versions: ${hasExistingVersions}`);
+                }
+              } catch (error) {
+                console.error("[ProcessingPage] Error checking existing files:", error);
+              }
+            }
             
             // Process files sequentially (one after another) to ensure proper versioning
             // and avoid database version conflicts
@@ -353,18 +381,129 @@ export default function ProcessingPage() {
     }
   };
 
-  // Auto-compare when 2+ files are completed
+  // Auto-compare when files are completed
+  // If there were existing files, compare all versions (old + new)
+  // If no existing files, compare only new files (if 2+)
   useEffect(() => {
     const completedFiles = files.filter(f => f.status === "completed" && f.rulesetVersion);
-    if (completedFiles.length >= 2 && viewMode === "comparison" && !comparisonData && !loadingComparison) {
-      // Auto-select all completed files
+    const allFilesCompleted = files.length > 0 && files.every(f => 
+      f.status === "completed" || f.status === "error"
+    );
+    
+    // Only auto-compare if all files are done processing
+    if (!allFilesCompleted || loadingComparison || comparisonData) {
+      return;
+    }
+    
+    // If there were existing files, compare ALL versions (old + new)
+    if (hadExistingFilesRef.current && completedFiles.length > 0) {
+      console.log("[ProcessingPage] Existing files detected, comparing all versions with new uploads");
+      setViewMode("comparison");
+      setShowComparison(true);
+      handleCompareAllVersions(completedFiles);
+    } 
+    // If no existing files, only compare if 2+ new files were uploaded
+    else if (!hadExistingFilesRef.current && completedFiles.length >= 2 && viewMode === "comparison") {
+      console.log("[ProcessingPage] No existing files, comparing new files only");
       const allCompletedIds = new Set(completedFiles.map(f => f.id));
       setCheckedFiles(allCompletedIds);
-      // Trigger comparison automatically
       handleCompareFilesInternal(completedFiles);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, viewMode]);
+
+  const handleCompareAllVersions = async (newFiles: FileProcessingState[]) => {
+    setLoadingComparison(true);
+    setShowComparison(true);
+
+    try {
+      const customerId = typeof window !== 'undefined' 
+        ? sessionStorage.getItem("currentCustomerId") || ""
+        : "";
+      const projectId = typeof window !== 'undefined' 
+        ? sessionStorage.getItem("currentProjectId") || customerId
+        : customerId;
+
+      // Fetch all existing rulesets from the project
+      const rulesetsResponse = await fetch(
+        `/api/projects/rulesets?customerId=${customerId}`,
+        { cache: "no-store" }
+      );
+
+      if (!rulesetsResponse.ok) {
+        throw new Error("Failed to fetch existing rulesets");
+      }
+
+      const rulesetsData = await rulesetsResponse.json();
+      const allRulesets = rulesetsData.rulesets || [];
+
+      if (allRulesets.length < 2) {
+        console.log("[ProcessingPage] Not enough rulesets for comparison");
+        setLoadingComparison(false);
+        return;
+      }
+
+      // Sort by version number
+      const sortedRulesets = allRulesets.sort((a: any, b: any) => 
+        (a.version || 0) - (b.version || 0)
+      );
+
+      // Fetch full ruleset data for each version
+      const versionDataPromises = sortedRulesets.map(async (ruleset: any) => {
+        const version = ruleset.version;
+        const response = await fetch(
+          `/api/projects/rulesets/${version}?customerId=${customerId}`,
+          { cache: "no-store" }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          return {
+            version: version,
+            versionName: data.ruleset?.versionName || `v${version}`,
+            createdAt: data.ruleset?.createdAt || new Date().toISOString(),
+            raw_rules: data.ruleset?.data?.raw_rules || [],
+          };
+        }
+        return null;
+      });
+
+      const allVersionData = (await Promise.all(versionDataPromises)).filter(Boolean);
+
+      if (allVersionData.length < 2) {
+        console.log("[ProcessingPage] Could not load enough ruleset data for comparison");
+        setLoadingComparison(false);
+        return;
+      }
+
+      // Call comparison API with all versions
+      const diffResponse = await fetch("/api/agents/rules-diff", {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        cache: "no-store",
+        body: JSON.stringify({
+          projectId,
+          customerId,
+          versions: allVersionData,
+        }),
+      });
+
+      if (diffResponse.ok) {
+        const diffData = await diffResponse.json();
+        setComparisonData(diffData);
+        console.log(`[ProcessingPage] Comparison completed with ${allVersionData.length} versions`);
+      } else {
+        const errorData = await diffResponse.json().catch(() => ({}));
+        console.error(`[ProcessingPage] Comparison failed:`, errorData.error || 'Unknown error');
+        setShowComparison(false);
+      }
+    } catch (error) {
+      console.error("[ProcessingPage] Error comparing all versions:", error);
+      setShowComparison(false);
+    } finally {
+      setLoadingComparison(false);
+    }
+  };
 
   const handleCompareFilesInternal = async (filesToCompare: FileProcessingState[]) => {
     if (filesToCompare.length < 2) {
@@ -462,8 +601,9 @@ export default function ProcessingPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* View Mode Toggle - Show when 2+ files are completed */}
-      {files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 2 ? (
+        {/* View Mode Toggle - Show when 2+ files are completed OR when 1+ file completed with existing files */}
+      {(files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 2 || 
+        (hadExistingFilesRef.current && files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 1)) ? (
         <Card className="mb-6">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -479,7 +619,16 @@ export default function ProcessingPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button 
-                  onClick={() => setViewMode("comparison")}
+                  onClick={() => {
+                    setViewMode("comparison");
+                    // If there are existing files and comparison data not loaded, trigger comparison
+                    if (hadExistingFilesRef.current && !comparisonData && !loadingComparison) {
+                      const completedFiles = files.filter(f => f.status === "completed" && f.rulesetVersion);
+                      if (completedFiles.length > 0) {
+                        handleCompareAllVersions(completedFiles);
+                      }
+                    }
+                  }}
                   variant={viewMode === "comparison" ? "default" : "outline"}
                   size="sm"
                   className="gap-2"
@@ -538,7 +687,9 @@ export default function ProcessingPage() {
       )}
 
       {/* Comparison Table - Show inline when in comparison mode */}
-      {viewMode === "comparison" && files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 2 && (
+      {viewMode === "comparison" && 
+       (files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 2 || 
+        (hadExistingFilesRef.current && files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 1)) && (
         <Card className="mb-6">
           <CardContent className="p-6">
             {loadingComparison ? (
