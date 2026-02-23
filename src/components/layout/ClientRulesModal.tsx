@@ -23,27 +23,8 @@ import {
   Building2,
   Scale,
 } from "lucide-react";
-
-interface CustomerCatalog {
-  Issuer_Country?: string;
-  Coupon_Rate?: string;
-  Sector?: string;
-  Instrument_Type?: string;
-  Composite_Rating?: string;
-  IG_Flag?: string;
-  Days_to_Maturity?: string;
-  Shariah_Compliant?: string;
-  [key: string]: string | undefined;
-}
-
-interface SelectedCompany {
-  companyId: string;
-  companyName: string;
-  fidessa_catalog: CustomerCatalog;
-  fidessa_catalog_v1?: CustomerCatalog;
-  fidessa_catalog_v2?: CustomerCatalog;
-  rulesVersion?: "v1" | "v2";
-}
+import { getCustomerById, getCatalogForVersion } from "@/lib/customers";
+import type { CustomerCatalog } from "@/lib/customers";
 
 interface FieldConfig {
   icon: React.ElementType;
@@ -110,14 +91,9 @@ const defaultFieldConfig: FieldConfig = {
   border: "border-slate-200",
 };
 
-function getCatalogForVersion(sc: SelectedCompany, version: "v1" | "v2"): CustomerCatalog | null {
-  if (version === "v2" && sc.fidessa_catalog_v2) return sc.fidessa_catalog_v2;
-  if (sc.fidessa_catalog_v1) return sc.fidessa_catalog_v1;
-  return sc.fidessa_catalog;
-}
-
 export function ClientRulesModal() {
-  const [selectedCompany, setSelectedCompany] = useState<SelectedCompany | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>("");
   const [viewVersion, setViewVersion] = useState<"v1" | "v2">("v1");
   const [isOpen, setIsOpen] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
@@ -127,15 +103,21 @@ export function ClientRulesModal() {
       const stored = sessionStorage.getItem("currentSelectedCompany");
       if (stored) {
         try {
-          setSelectedCompany(JSON.parse(stored));
+          const parsed = JSON.parse(stored) as { companyId?: string; companyName?: string };
+          setCompanyId(parsed.companyId ?? null);
+          setCompanyName(parsed.companyName ?? "");
         } catch {
-          setSelectedCompany(null);
+          setCompanyId(null);
+          setCompanyName("");
         }
       } else {
-        setSelectedCompany(null);
+        setCompanyId(null);
+        setCompanyName("");
       }
     }
   }, [isOpen]);
+
+  const customer = companyId ? getCustomerById(companyId) : null;
 
   const formatFieldName = (name: string): string => {
     return name
@@ -202,15 +184,10 @@ export function ClientRulesModal() {
     );
   };
 
-  const catalog = selectedCompany
-    ? getCatalogForVersion(selectedCompany, viewVersion)
-    : null;
+  const catalog = customer ? getCatalogForVersion(customer, viewVersion) : null;
   const catalogEntries = catalog
     ? Object.entries(catalog).filter(([, value]) => value)
     : [];
-  const hasVersionedCatalogs = Boolean(
-    selectedCompany?.fidessa_catalog_v1 || selectedCompany?.fidessa_catalog_v2
-  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -242,46 +219,44 @@ export function ClientRulesModal() {
           </div>
         </div>
 
-        {selectedCompany ? (
+        {customer ? (
           <>
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <Building2 className="w-4 h-4 text-[#64A8F0] flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900 truncate">
-                    {selectedCompany.companyName}
+                    {companyName || customer.name}
                   </p>
                   <p className="text-[10px] text-slate-500 font-mono truncate">
-                    {selectedCompany.companyId}
+                    {companyId || customer.id}
                   </p>
                 </div>
               </div>
-              {hasVersionedCatalogs && (
-                <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-100/80">
-                  <button
-                    type="button"
-                    onClick={() => setViewVersion("v1")}
-                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                      viewVersion === "v1"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    V1
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewVersion("v2")}
-                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                      viewVersion === "v2"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    V2
-                  </button>
-                </div>
-              )}
+              <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-100/80">
+                <button
+                  type="button"
+                  onClick={() => setViewVersion("v1")}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewVersion === "v1"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  V1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewVersion("v2")}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewVersion === "v2"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  V2
+                </button>
+              </div>
             </div>
 
             <ScrollArea className="h-[420px]">
@@ -338,7 +313,7 @@ export function ClientRulesModal() {
                 No Client Selected
               </h3>
               <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                Select or create a project to view the current client&apos;s rules.
+                Select or create a project to view the current client&apos;s rules (V1 and V2).
               </p>
               <Button
                 variant="outline"

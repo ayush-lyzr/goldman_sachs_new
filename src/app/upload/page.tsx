@@ -22,14 +22,12 @@ const UploadPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [rulesVersion, setRulesVersion] = useState<RulesVersion>("v1");
 
-  // Get customerId and rules version from sessionStorage on mount; keep sessionStorage in sync with selected version
+  // Get customerId on mount. Version is per upload: always start with V1 when visiting upload page (user can change before uploading).
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedId = sessionStorage.getItem("currentCustomerId");
-      const storedVersion = sessionStorage.getItem(RULES_VERSION_KEY) as RulesVersion | null;
-      const version = storedVersion === "v1" || storedVersion === "v2" ? storedVersion : "v1";
-      setRulesVersion(version);
-      sessionStorage.setItem(RULES_VERSION_KEY, version);
+      setRulesVersion("v1");
+      sessionStorage.setItem(RULES_VERSION_KEY, "v1");
       if (storedId) {
         setCustomerId(storedId);
         loadRulesets(storedId);

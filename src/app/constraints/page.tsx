@@ -13,11 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { 
-  ArrowRight, 
-  FileText, 
-  CheckCircle, 
-  GitCompare, 
+import {
+  ArrowRight,
+  FileText,
+  CheckCircle,
+  GitCompare,
   Loader2,
   FileSearch,
   Sparkles,
@@ -27,6 +27,7 @@ import {
   Clock,
   AlertCircle,
 } from "lucide-react";
+import { getCustomerById, getCatalogForVersion } from "@/lib/customers";
 
 interface ExtractedRule {
   title: string;
@@ -302,28 +303,23 @@ function ConstraintsPageContent() {
       setProcessingStep("Performing gap analysis...");
       console.log("Step 2: Calling gap analysis agent...");
       
-      // Get fidessa_catalog for the selected rules version (v1 or v2) from sessionStorage
+      // Get fidessa_catalog from client list by companyId + selected version (no stored catalogs)
       let fidessa_catalog: Record<string, string> | undefined;
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         const storedCompany = sessionStorage.getItem("currentSelectedCompany");
         const rulesVersion = (sessionStorage.getItem("currentRulesVersion") || "v1") as "v1" | "v2";
         if (storedCompany) {
           try {
-            const company = JSON.parse(storedCompany) as {
-              fidessa_catalog?: Record<string, string>;
-              fidessa_catalog_v1?: Record<string, string>;
-              fidessa_catalog_v2?: Record<string, string>;
-            };
-            if (rulesVersion === "v2" && company?.fidessa_catalog_v2) {
-              fidessa_catalog = company.fidessa_catalog_v2;
-            } else if (company?.fidessa_catalog_v1) {
-              fidessa_catalog = company.fidessa_catalog_v1;
-            } else {
-              fidessa_catalog = company?.fidessa_catalog;
+            const parsed = JSON.parse(storedCompany) as { companyId?: string };
+            const companyId = parsed?.companyId;
+            const customer = companyId ? getCustomerById(companyId) : null;
+            if (customer) {
+              const catalog = getCatalogForVersion(customer, rulesVersion);
+              fidessa_catalog = catalog as unknown as Record<string, string>;
+              console.log("Using customer fidessa_catalog (" + rulesVersion + "):", fidessa_catalog);
             }
-            console.log("Using customer fidessa_catalog (" + rulesVersion + "):", fidessa_catalog);
           } catch (err) {
-            console.error("Error parsing selected company:", err);
+            console.error("Error resolving client catalog:", err);
           }
         }
       }
