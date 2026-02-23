@@ -3,6 +3,7 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { CUSTOMERS, getCatalogForVersion } from "@/lib/customers";
 
 type ProjectStatus = "Compliant" | "Under Review" | "Issues Found";
 
@@ -10,6 +11,9 @@ type SelectedCompany = {
   companyId: string;
   companyName: string;
   fidessa_catalog: Record<string, string>;
+  fidessa_catalog_v1?: Record<string, string>;
+  fidessa_catalog_v2?: Record<string, string>;
+  rulesVersion?: "v1" | "v2";
 };
 
 type Project = {
@@ -33,52 +37,6 @@ type Project = {
 type ProjectsResponse = { projects: Project[] };
 
 const projectTypes = ["Family Office", "Corporate", "UHNI", "Institutional"];
-
-// Customer data - this would typically come from an API in production
-const CUSTOMERS = [
-  {
-    id: "client-1",
-    name: "Client 1",
-    fidessa_catalog: {
-      Issuer_Country: "US,GB,DE,FR,JP,IN,CN,CA,AU,CH,SE,NO,BR,MX,SG,XX",
-      Coupon_Rate: "0.0-12.0%",
-      Sector: "Financials,Government,Industrial,Utilities,Energy,Real Estate,Communications,Consumer,Healthcare,Technology,Transport,Supranational",
-      Instrument_Type: "Sovereign,Supranational,Corporate,Agency,Municipal,Sukuk",
-      Composite_Rating: "AAA,AA+,AA,AA-,A+,A,A-,BBB+,BBB,BBB-,BB+,BB,BB-,B+,B,B-,CCC+,CCC,CCC-,CC,C,D,NR",
-      IG_Flag: "Yes,No",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "Yes,No",
-    },
-  },
-  {
-    id: "client-2",
-    name: "Client 2",
-    fidessa_catalog: {
-      Issuer_Country: "US,GB,DE,FR,JP,IN,CN,CA,AU,CH,SE,NO,BR,MX,SG,XX",
-      Instrument_Type: "Sovereign,Corporate,Sukuk",
-      Composite_Rating: "AAA,AA+,AA,AA-,A+,A,A-,BBB+,BBB,BBB-,BB+,BB,BB-,B+,B,B-,CCC+,CCC,CCC-,CC,C,D,NR",
-      IG_Flag: "Yes,No",
-      Sector: "Government,Financials,Industrial,Utilities,Energy,Real Estate,Communications,Consumer,Healthcare,Technology,Transport,Supranational",
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "Yes",
-    },
-  },
-  {
-    id: "client-3",
-    name: "Client 3",
-    fidessa_catalog: {
-      Issuer_Country: "US,GB,DE,FR,JP,IN,CN,CA,AU,CH,SE,NO,BR,MX,SG,XX",
-      Instrument_Type: "Sovereign,Supranational,Agency,Corporate",
-      Composite_Rating: "AAA,AA+,AA,AA-,A+,A,A-,BBB+,BBB,BBB-,BB+,BB,BB-,B+,B,B-,CCC+,CCC,CCC-,CC,C,D,NR",
-      IG_Flag: "Conditional: Yes if Issuer_Country is Developing; No if Issuer_Country is Developed",
-      Sector: "Government,Supranational,Financials,Industrial,Utilities,Energy,Real Estate,Communications,Consumer,Healthcare,Technology,Transport",
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "No",
-    },
-  },
-];
 
 function formatDate(iso?: string): string {
   if (!iso) return "—";
@@ -149,11 +107,14 @@ export default function ProjectsClient() {
         // Generate customerId on the client and send with the request
         const customerId = crypto.randomUUID();
         
-        // Prepare the selectedCompany payload
-        const selectedCompanyPayload = {
+        // Store both catalog versions for all clients; version choice happens at upload time
+        const selectedCompanyPayload: SelectedCompany = {
           companyId: selectedCustomer.id,
           companyName: selectedCustomer.name,
-          fidessa_catalog: selectedCustomer.fidessa_catalog,
+          fidessa_catalog: getCatalogForVersion(selectedCustomer, "v1") as unknown as Record<string, string>,
+          fidessa_catalog_v1: selectedCustomer.fidessa_catalog_v1 as unknown as Record<string, string>,
+          fidessa_catalog_v2: selectedCustomer.fidessa_catalog_v2 as unknown as Record<string, string>,
+          rulesVersion: "v1",
         };
         
         const res = await fetch("/api/projects", {
@@ -183,6 +144,7 @@ export default function ProjectsClient() {
           );
           // Also store in sessionStorage for immediate access
           sessionStorage.setItem("currentSelectedCompany", JSON.stringify(selectedCompanyPayload));
+          sessionStorage.setItem("currentRulesVersion", "v1");
           
           // Clear any previously extracted rules to ensure fresh state
           sessionStorage.removeItem("extractedRules");
@@ -412,11 +374,14 @@ export default function ProjectsClient() {
                       // Load the selected company from project data or localStorage
                       if (project.selectedCompany) {
                         sessionStorage.setItem("currentSelectedCompany", JSON.stringify(project.selectedCompany));
+                        const rv = (project.selectedCompany as SelectedCompany).rulesVersion ?? "v1";
+                        sessionStorage.setItem("currentRulesVersion", rv);
                       } else {
                         // Try to load from localStorage as fallback
                         const storedCompany = localStorage.getItem(`project_${project.id}_company`);
                         if (storedCompany) {
                           sessionStorage.setItem("currentSelectedCompany", storedCompany);
+                          sessionStorage.setItem("currentRulesVersion", "v1");
                         }
                       }
                       
@@ -516,7 +481,7 @@ export default function ProjectsClient() {
                     </svg>
                   </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">Select the customer whose catalog will be used for gap analysis</p>
+                <p className="text-xs text-slate-500 mt-1.5">Select the customer. Both V1 and V2 rules are stored; choose version when uploading.</p>
               </label>
 
               <div className="flex gap-3">

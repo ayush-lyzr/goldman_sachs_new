@@ -302,15 +302,26 @@ function ConstraintsPageContent() {
       setProcessingStep("Performing gap analysis...");
       console.log("Step 2: Calling gap analysis agent...");
       
-      // Get the selected company's fidessa_catalog from sessionStorage
+      // Get fidessa_catalog for the selected rules version (v1 or v2) from sessionStorage
       let fidessa_catalog: Record<string, string> | undefined;
       if (typeof window !== 'undefined') {
         const storedCompany = sessionStorage.getItem("currentSelectedCompany");
+        const rulesVersion = (sessionStorage.getItem("currentRulesVersion") || "v1") as "v1" | "v2";
         if (storedCompany) {
           try {
-            const company = JSON.parse(storedCompany);
-            fidessa_catalog = company.fidessa_catalog;
-            console.log("Using customer fidessa_catalog:", fidessa_catalog);
+            const company = JSON.parse(storedCompany) as {
+              fidessa_catalog?: Record<string, string>;
+              fidessa_catalog_v1?: Record<string, string>;
+              fidessa_catalog_v2?: Record<string, string>;
+            };
+            if (rulesVersion === "v2" && company?.fidessa_catalog_v2) {
+              fidessa_catalog = company.fidessa_catalog_v2;
+            } else if (company?.fidessa_catalog_v1) {
+              fidessa_catalog = company.fidessa_catalog_v1;
+            } else {
+              fidessa_catalog = company?.fidessa_catalog;
+            }
+            console.log("Using customer fidessa_catalog (" + rulesVersion + "):", fidessa_catalog);
           } catch (err) {
             console.error("Error parsing selected company:", err);
           }

@@ -13,6 +13,8 @@ import { GapAnalysisDisplay } from "@/components/rules/GapAnalysisDisplay";
 import { RulesVersionTable } from "@/components/comparison/RulesVersionTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ProcessingActivityPanel, type ProcessingActivityEntry } from "@/components/processing/ProcessingActivityPanel";
+import { useLyzrAgentEvents } from "@/hooks/useLyzrAgentEvents";
 
 interface FileProcessingState {
   file: File;
@@ -36,7 +38,9 @@ export default function ProcessingPage() {
   const [showComparison, setShowComparison] = useState(false);
   const [loadingComparison, setLoadingComparison] = useState(false);
   const [viewMode, setViewMode] = useState<"comparison" | "gapAnalysis">("comparison");
-  
+  const [activityLog, setActivityLog] = useState<ProcessingActivityEntry[]>([]);
+  const [sessionIdForWs, setSessionIdForWs] = useState<string | null>(null);
+
   // Track which files have been processed to prevent duplicates (React StrictMode causes useEffect to run twice)
   const processedFilesRef = useRef<Set<string>>(new Set());
   // Track if there were existing files in the project before this upload
@@ -127,6 +131,10 @@ export default function ProcessingPage() {
     ));
   };
 
+  const pushActivity = (fileId: string, fileName: string, step: string, event: "started" | "completed" | "failed") => {
+    setActivityLog(prev => [...prev, { timestamp: new Date(), fileId, fileName, step, event }]);
+  };
+
   const processFileAsync = async (fileId: string, fileState: FileProcessingState) => {
     try {
       // Get customerId and projectId
@@ -184,6 +192,7 @@ export default function ProcessingPage() {
       console.log(`Processing file with unique ID: ${uniqueFileId}`);
       
       // Step 1: Extract markdown
+      pushActivity(fileId, fileState.file.name, "Extracting content", "started");
       updateFileState(fileId, { status: "extracting", showDetails: true });
       const formData = new FormData();
       formData.append("files", fileState.file);
@@ -203,12 +212,14 @@ export default function ProcessingPage() {
       }
 
       const markdown = extractData.results[0].markdown;
+      pushActivity(fileId, fileState.file.name, "Extracting content", "completed");
       updateFileState(fileId, { 
         status: "extracted", 
         markdown 
       });
 
       // Step 2: Extract rules
+      pushActivity(fileId, fileState.file.name, "Mapping rules", "started");
       updateFileState(fileId, { status: "rules-mapping" });
       const rulesResponse = await fetch("/api/agents/rules-extractor", {
         method: "POST",
@@ -230,6 +241,7 @@ export default function ProcessingPage() {
       }
 
       const extractedRules = rulesData.rules || [];
+      pushActivity(fileId, fileState.file.name, "Mapping rules", "completed");
       updateFileState(fileId, { 
         status: "rules-mapped", 
         extractedRules 
@@ -267,19 +279,31 @@ export default function ProcessingPage() {
       console.log(`File "${fileState.file.name}" assigned version: ${rulesetVersion}`);
 
       // Step 4: Gap analysis
+      pushActivity(fileId, fileState.file.name, "Gap analysis", "started");
       updateFileState(fileId, { status: "gap-analysis", mappedRules, rulesetVersion });
       
-      // Get fidessa_catalog from selectedCompany stored in sessionStorage
+      // Get fidessa_catalog for the selected rules version (v1 or v2) from sessionStorage
       let fidessa_catalog: Record<string, string> | undefined = undefined;
       if (typeof window !== 'undefined') {
         const storedCompany = sessionStorage.getItem("currentSelectedCompany");
+        const rulesVersion = (sessionStorage.getItem("currentRulesVersion") || "v1") as "v1" | "v2";
         if (storedCompany) {
           try {
-            const selectedCompany = JSON.parse(storedCompany);
-            // Extract fidessa_catalog from the selectedCompany object
-            fidessa_catalog = selectedCompany?.fidessa_catalog;
+            const selectedCompany = JSON.parse(storedCompany) as {
+              fidessa_catalog?: Record<string, string>;
+              fidessa_catalog_v1?: Record<string, string>;
+              fidessa_catalog_v2?: Record<string, string>;
+            };
+            // Use versioned catalog if available; otherwise fall back to fidessa_catalog
+            if (rulesVersion === "v2" && selectedCompany?.fidessa_catalog_v2) {
+              fidessa_catalog = selectedCompany.fidessa_catalog_v2;
+            } else if (selectedCompany?.fidessa_catalog_v1) {
+              fidessa_catalog = selectedCompany.fidessa_catalog_v1;
+            } else {
+              fidessa_catalog = selectedCompany?.fidessa_catalog;
+            }
             if (fidessa_catalog) {
-              console.log(`[ProcessingPage] Using fidessa_catalog for file "${fileState.file.name}":`, fidessa_catalog);
+              console.log(`[ProcessingPage] Using fidessa_catalog (${rulesVersion}) for file "${fileState.file.name}":`, fidessa_catalog);
             }
           } catch (err) {
             console.error("[ProcessingPage] Error parsing selected company:", err);
@@ -287,7 +311,7 @@ export default function ProcessingPage() {
         }
       }
       
-      const gapAnalysisResponse = await fetch("/api/agents/gap-analysis", {
+      const gapAnalysisPostResponse = await fetch("/api/agents/gap-analysis", {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -295,20 +319,22 @@ export default function ProcessingPage() {
           customerId,
           rulesToColumnResponse: rulesToColumnData,
           ...(fidessa_catalog && { fidessa_catalog }),
-          ...(rulesetVersion && { rulesetVersion }), // Pass the specific version to update
+          ...(rulesetVersion && { rulesetVersion }),
         }),
       });
 
-      if (!gapAnalysisResponse.ok) {
-        throw new Error("Gap analysis failed");
+      if (!gapAnalysisPostResponse.ok) {
+        const errData = await gapAnalysisPostResponse.json().catch(() => ({}));
+        throw new Error(errData.error || "Gap analysis failed to start");
       }
 
-      const gapAnalysisData = await gapAnalysisResponse.json();
-      if (gapAnalysisData.error) {
-        throw new Error(`Gap analysis failed: ${gapAnalysisData.error}`);
+      const { jobId: gapJobId } = await gapAnalysisPostResponse.json();
+      if (!gapJobId) {
+        throw new Error("No jobId returned from gap analysis API");
       }
 
-      const gapAnalysis = gapAnalysisData.mapped_rules || [];
+      const gapAnalysis = await pollGapAnalysisJob(gapJobId);
+      pushActivity(fileId, fileState.file.name, "Gap analysis", "completed");
 
       // Save file upload with all data including ruleset version
       // This is the ONLY place we save file uploads - ensures no duplicate records
@@ -327,6 +353,7 @@ export default function ProcessingPage() {
         });
       }
 
+      pushActivity(fileId, fileState.file.name, `Completed (v${rulesetVersion})`, "completed");
       // Mark as completed
       const currentFileState = files.find(f => f.id === fileId);
       updateFileState(fileId, { 
@@ -339,6 +366,7 @@ export default function ProcessingPage() {
 
     } catch (error) {
       console.error(`Error processing file ${fileId}:`, error);
+      pushActivity(fileId, fileState.file.name, "Processing", "failed");
       updateFileState(fileId, { 
         status: "error",
         error: error instanceof Error ? error.message : "Failed to process file",
@@ -442,6 +470,27 @@ export default function ProcessingPage() {
     }
 
     throw new Error("Comparison job timed out");
+  };
+
+  const pollGapAnalysisJob = async (jobId: string, maxAttempts: number = 120): Promise<any[]> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const pollRes = await fetch(`/api/agents/gap-analysis?jobId=${encodeURIComponent(jobId)}`, {
+        cache: "no-store",
+      });
+      if (!pollRes.ok) {
+        throw new Error(`Gap analysis poll failed: ${pollRes.statusText}`);
+      }
+      const jobStatus = await pollRes.json();
+      if (jobStatus.status === "completed" && jobStatus.result) {
+        return jobStatus.result.mapped_rules || [];
+      }
+      if (jobStatus.status === "failed") {
+        throw new Error(jobStatus.error || "Gap analysis job failed");
+      }
+      const waitMs = Math.min(1000 * (attempt + 1), 5000);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+    throw new Error("Gap analysis job timed out");
   };
 
   const handleCompareAllVersions = async (newFiles: FileProcessingState[]) => {
@@ -667,8 +716,56 @@ export default function ProcessingPage() {
     handleCompareFilesInternal(completedFiles);
   };
 
+  const isProcessing = files.some(f =>
+    f.status === "extracting" || f.status === "rules-mapping" || f.status === "gap-analysis"
+  ) || loadingComparison;
+  const currentProcessingFile = files.find(f =>
+    f.status === "extracting" || f.status === "rules-mapping" || f.status === "gap-analysis"
+  );
+  const currentFileForPanel = currentProcessingFile
+    ? {
+        fileName: currentProcessingFile.file.name,
+        step:
+          currentProcessingFile.status === "extracting"
+            ? "Extracting content"
+            : currentProcessingFile.status === "rules-mapping"
+              ? "Mapping rules"
+              : "Gap analysis",
+      }
+    : loadingComparison
+      ? { fileName: "Comparison", step: "Comparing versions…" }
+      : null;
+
+  // When processing, sync WebSocket session id from sessionStorage (set by processFileAsync)
+  useEffect(() => {
+    if (!isProcessing) {
+      setSessionIdForWs(null);
+      return;
+    }
+    const read = () => {
+      const id = typeof window !== "undefined" ? sessionStorage.getItem("currentCustomerId") : null;
+      if (id) setSessionIdForWs(id);
+    };
+    read();
+    const t = setInterval(read, 500);
+    return () => clearInterval(t);
+  }, [isProcessing]);
+
+  const wsAgentEvents = useLyzrAgentEvents(sessionIdForWs);
+
+  useEffect(() => {
+    wsAgentEvents.setProcessing(isProcessing);
+  }, [isProcessing, wsAgentEvents.setProcessing]);
+
+  const activeLocalAgentKeys: string[] = [];
+  if (loadingComparison) activeLocalAgentKeys.push("rules-diff");
+  if (currentProcessingFile?.status === "gap-analysis") activeLocalAgentKeys.push("gap-analysis");
+
   return (
     <AppLayout>
+      <div className="flex flex-1 min-h-0 gap-6">
+        {/* Main content - files list and comparison */}
+        <div className="flex-1 min-w-0 overflow-auto">
       <div className="space-y-6">
         {/* View Mode Toggle - Show when 2+ files are completed OR when 1+ file completed with existing files */}
       {(files.filter(f => f.status === "completed" && f.rulesetVersion).length >= 2 || 
@@ -916,6 +1013,23 @@ export default function ProcessingPage() {
           </Card>
         ))}
       </div>
+      </div>
+      </div>
+
+        {/* Agent Activity panel - right side (same pattern as agentic-shopping-experience) */}
+        <div className="w-[320px] shrink-0 flex flex-col min-h-0 hidden lg:flex">
+          <ProcessingActivityPanel
+            activityLog={activityLog}
+            isProcessing={isProcessing}
+            currentFile={currentFileForPanel}
+            wsEventsByAgent={wsAgentEvents.eventsByAgent}
+            wsActiveAgentKeys={wsAgentEvents.activeAgentKeys}
+            wsConnected={wsAgentEvents.isConnected}
+            activeLocalAgentKeys={activeLocalAgentKeys}
+            wsEvents={wsAgentEvents.events}
+            wsLastThinkingMessage={wsAgentEvents.lastThinkingMessage}
+          />
+        </div>
       </div>
     </AppLayout>
   );

@@ -33,6 +33,9 @@ export interface ISelectedCompany {
   companyId: string;
   companyName: string;
   fidessa_catalog: Record<string, string>;
+  fidessa_catalog_v1?: Record<string, string>;
+  fidessa_catalog_v2?: Record<string, string>;
+  rulesVersion?: "v1" | "v2";
 }
 
 export interface IFileUpload {
@@ -89,6 +92,9 @@ const SelectedCompanySchema = new Schema(
       type: Schema.Types.Mixed,
       required: true,
     },
+    fidessa_catalog_v1: { type: Schema.Types.Mixed, required: false },
+    fidessa_catalog_v2: { type: Schema.Types.Mixed, required: false },
+    rulesVersion: { type: String, enum: ["v1", "v2"], required: false },
   },
   { _id: false }
 );
