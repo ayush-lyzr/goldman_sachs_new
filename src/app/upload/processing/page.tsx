@@ -45,6 +45,18 @@ export default function ProcessingPage() {
   const processedFilesRef = useRef<Set<string>>(new Set());
   // Track if there were existing files in the project before this upload
   const hadExistingFilesRef = useRef<boolean>(false);
+  // When a new project has only one file and it completes, show gap analysis by default (only once)
+  const hasAutoSwitchedToGapRef = useRef<boolean>(false);
+
+  // After processing: if single file in a new project just completed, show gap analysis
+  useEffect(() => {
+    if (hasAutoSwitchedToGapRef.current) return;
+    const completed = files.filter((f) => f.status === "completed" && f.gapAnalysis?.length);
+    if (files.length === 1 && completed.length === 1 && !hadExistingFilesRef.current) {
+      hasAutoSwitchedToGapRef.current = true;
+      setViewMode("gapAnalysis");
+    }
+  }, [files]);
 
   // Load files from sessionStorage on mount
   useEffect(() => {
