@@ -9,10 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertTriangle, XCircle, FileText, GitBranch, Clock, Loader2, AlertCircle as AlertCircleIcon } from "lucide-react";
 import { fetchRulesets, formatRulesetDate, type RulesetMetadata } from "@/lib/rulesets";
-import type { RulesVersion } from "@/lib/customers";
 import Link from "next/link";
-
-const RULES_VERSION_KEY = "currentRulesVersion";
 
 const UploadPage = () => {
   const [customerId, setCustomerId] = useState<string>("");
@@ -20,14 +17,10 @@ const UploadPage = () => {
   const [rulesets, setRulesets] = useState<RulesetMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rulesVersion, setRulesVersion] = useState<RulesVersion>("v1");
 
-  // Get customerId on mount. Version is per upload: always start with V1 when visiting upload page (user can change before uploading).
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedId = sessionStorage.getItem("currentCustomerId");
-      setRulesVersion("v1");
-      sessionStorage.setItem(RULES_VERSION_KEY, "v1");
       if (storedId) {
         setCustomerId(storedId);
         loadRulesets(storedId);
@@ -36,11 +29,6 @@ const UploadPage = () => {
       }
     }
   }, []);
-
-  const handleRulesVersionChange = (version: RulesVersion) => {
-    setRulesVersion(version);
-    if (typeof window !== "undefined") sessionStorage.setItem(RULES_VERSION_KEY, version);
-  };
 
   const loadRulesets = async (id: string) => {
     try {
@@ -118,30 +106,6 @@ const UploadPage = () => {
             {/* Main Content */}
             <div className="grid lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-6">
-                {/* Client rules version: used as fidessa_catalog when processing */}
-                <Card>
-                  <CardContent className="py-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-sm font-medium text-muted-foreground">Client rules version for uploads</span>
-                      <div className="flex rounded-lg border border-border p-0.5 bg-muted/30">
-                        <button
-                          type="button"
-                          onClick={() => handleRulesVersionChange("v1")}
-                          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${rulesVersion === "v1" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                        >
-                          V1
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRulesVersionChange("v2")}
-                          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${rulesVersion === "v2" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                        >
-                          V2
-                        </button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
                 <UploadZone />
                 <FileUploadHistory customerId={customerId} />
               </div>

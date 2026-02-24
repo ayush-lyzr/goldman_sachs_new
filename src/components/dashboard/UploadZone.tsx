@@ -14,10 +14,13 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 
+type ClientRulesVersion = "v1" | "v2";
+
 interface SelectedFile {
   file: File;
   id: string;
   version?: number; // Selected version number (undefined = auto-assign new version)
+  clientRulesVersion?: ClientRulesVersion; // Client rules version (V1/V2) for this file
 }
 
 export function UploadZone() {
@@ -108,11 +111,12 @@ export function UploadZone() {
       alert("Some files were skipped. Please upload only PDF or DOCX files.");
     }
 
-    // Add new files without version (will be auto-assigned based on order)
+    // Add new files without version (will be auto-assigned based on order); default client rules V1
     const newSelectedFiles: SelectedFile[] = validFiles.map(file => ({
       file,
       id: crypto.randomUUID(),
       version: undefined, // undefined = auto-assign new version
+      clientRulesVersion: "v1",
     }));
     
     setSelectedFiles(prev => {
@@ -186,7 +190,7 @@ export function UploadZone() {
       if (!fileWithTargetVersion) {
         return prev.map(f => f.id === fileId ? { ...f, version: newVersion } : f);
       }
-      
+
       // If conflict, swap versions between the two files
       return prev.map(f => {
         if (f.id === fileId) {
@@ -198,6 +202,12 @@ export function UploadZone() {
         return f;
       });
     });
+  };
+
+  const handleClientRulesVersionChange = (fileId: string, version: ClientRulesVersion) => {
+    setSelectedFiles(prev =>
+      prev.map(f => (f.id === fileId ? { ...f, clientRulesVersion: version } : f))
+    );
   };
 
   const handleFileSelect = () => {
@@ -243,7 +253,8 @@ export function UploadZone() {
               type: selectedFile.file.type,
               size: selectedFile.file.size,
               data: e.target?.result,
-              preferredVersion: selectedFile.version, // Store user's version preference
+              preferredVersion: selectedFile.version,
+              clientRulesVersion: selectedFile.clientRulesVersion ?? "v1",
             });
           };
           reader.readAsDataURL(selectedFile.file);
@@ -368,21 +379,18 @@ export function UploadZone() {
                           </p>
                           <span className="text-xs text-muted-foreground">•</span>
               <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Version:</span>
+                            <span className="text-xs text-muted-foreground">Document version:</span>
                             <Select
                               value={displayVersion.toString()}
                               onValueChange={(value) => {
                                 const versionNum = parseInt(value, 10);
-                                // Only allow selecting from new versions being assigned
                                 if (newVersions.includes(versionNum)) {
                                   handleVersionChange(selectedFile.id, value);
                                 }
                               }}
                             >
                               <SelectTrigger className="h-7 w-28 text-xs">
-                                <SelectValue>
-                                  {versionName}
-                                </SelectValue>
+                                <SelectValue>{versionName}</SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 {newVersions.map((versionNum) => (
@@ -390,6 +398,22 @@ export function UploadZone() {
                                     v{versionNum}
                                   </SelectItem>
                                 ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <span className="text-xs text-muted-foreground">•</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Client rules:</span>
+                            <Select
+                              value={selectedFile.clientRulesVersion ?? "v1"}
+                              onValueChange={(value) => handleClientRulesVersionChange(selectedFile.id, value as ClientRulesVersion)}
+                            >
+                              <SelectTrigger className="h-7 w-20 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="v1">V1</SelectItem>
+                                <SelectItem value="v2">V2</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>

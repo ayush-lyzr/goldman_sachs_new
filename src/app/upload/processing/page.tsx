@@ -27,8 +27,12 @@ interface FileProcessingState {
   mappedRules?: any[];
   gapAnalysis?: any[];
   rulesetVersion?: number;
+  /** Stored so we can re-run gap analysis with alternate client rules version */
+  rulesToColumnResponse?: object;
   showDetails?: boolean;
   viewMode?: "markdown" | "rules" | "mapped" | "gapAnalysis" | null;
+  /** Client rules version (V1/V2) chosen for this file when uploading */
+  clientRulesVersion?: "v1" | "v2";
 }
 
 export default function ProcessingPage() {
@@ -41,6 +45,7 @@ export default function ProcessingPage() {
   const [viewMode, setViewMode] = useState<"comparison" | "gapAnalysis">("comparison");
   const [activityLog, setActivityLog] = useState<ProcessingActivityEntry[]>([]);
   const [sessionIdForWs, setSessionIdForWs] = useState<string | null>(null);
+  const [reRunningGapForFileId, setReRunningGapForFileId] = useState<string | null>(null);
 
   // Track which files have been processed to prevent duplicates (React StrictMode causes useEffect to run twice)
   const processedFilesRef = useRef<Set<string>>(new Set());
@@ -67,7 +72,7 @@ export default function ProcessingPage() {
         try {
           const parsedFilesData = JSON.parse(savedFilesData);
           
-          // Convert data URLs back to File objects
+          // Convert data URLs back to File objects; keep per-file clientRulesVersion from upload
           const filePromises = parsedFilesData.map((fileData: any) => {
             return fetch(fileData.data)
               .then(res => res.blob())
@@ -78,6 +83,7 @@ export default function ProcessingPage() {
                   id: fileData.id,
                   status: "pending" as const,
                   showDetails: true,
+                  clientRulesVersion: fileData.clientRulesVersion === "v2" ? "v2" : "v1",
                 };
               });
           });
@@ -295,11 +301,11 @@ export default function ProcessingPage() {
       pushActivity(fileId, fileState.file.name, "Gap analysis", "started");
       updateFileState(fileId, { status: "gap-analysis", mappedRules, rulesetVersion });
       
-      // Get fidessa_catalog from client list by companyId + selected version (no stored catalogs)
+      // Get fidessa_catalog from client list by companyId + this file's selected client rules version
+      const rulesVersion = fileState.clientRulesVersion ?? "v1";
       let fidessa_catalog: Record<string, string> | undefined = undefined;
       if (typeof window !== "undefined") {
         const storedCompany = sessionStorage.getItem("currentSelectedCompany");
-        const rulesVersion = (sessionStorage.getItem("currentRulesVersion") || "v1") as "v1" | "v2";
         if (storedCompany) {
           try {
             const parsed = JSON.parse(storedCompany) as { companyId?: string };
@@ -354,18 +360,20 @@ export default function ProcessingPage() {
             fileType: fileState.file.type || "application/pdf",
             markdown,
             rulesetVersion,
+            clientRulesVersion: fileState.clientRulesVersion ?? "v1",
           }),
         });
       }
 
       pushActivity(fileId, fileState.file.name, `Completed (v${rulesetVersion})`, "completed");
-      // Mark as completed
+      // Mark as completed (store rulesToColumnResponse for re-run with alternate client rules version)
       const currentFileState = files.find(f => f.id === fileId);
       updateFileState(fileId, { 
         status: "completed",
         gapAnalysis,
         mappedRules: currentFileState?.mappedRules || mappedRules,
         rulesetVersion: currentFileState?.rulesetVersion || rulesetVersion,
+        rulesToColumnResponse: rulesToColumnData,
         viewMode: currentFileState?.viewMode || "gapAnalysis",
       });
 
@@ -496,6 +504,78 @@ export default function ProcessingPage() {
       await new Promise((r) => setTimeout(r, waitMs));
     }
     throw new Error("Gap analysis job timed out");
+  };
+
+  const handleRerunGapAnalysisWithAlternateVersion = async (fileId: string, fileState: FileProcessingState) => {
+    const payload = fileState.rulesToColumnResponse;
+    if (!payload || !fileState.rulesetVersion) {
+      alert("Cannot re-run: missing rules data. Please re-upload the file.");
+      return;
+    }
+    const customerId = typeof window !== "undefined" ? sessionStorage.getItem("currentCustomerId") || "" : "";
+    const projectId = typeof window !== "undefined" ? sessionStorage.getItem("currentProjectId") || "" : "";
+    if (!customerId || !projectId) {
+      alert("Session missing. Please go back to upload and try again.");
+      return;
+    }
+    const currentVersion = fileState.clientRulesVersion ?? "v1";
+    const alternateVersion: "v1" | "v2" = currentVersion === "v1" ? "v2" : "v1";
+    setReRunningGapForFileId(fileId);
+    try {
+      let fidessa_catalog: Record<string, string> | undefined;
+      if (typeof window !== "undefined") {
+        const storedCompany = sessionStorage.getItem("currentSelectedCompany");
+        if (storedCompany) {
+          try {
+            const parsed = JSON.parse(storedCompany) as { companyId?: string };
+            const companyId = parsed?.companyId;
+            const customer = companyId ? getCustomerById(companyId) : null;
+            if (customer) {
+              fidessa_catalog = getCatalogForVersion(customer, alternateVersion) as unknown as Record<string, string>;
+            }
+          } catch (err) {
+            console.error("[ProcessingPage] Error resolving client catalog:", err);
+          }
+        }
+      }
+      const res = await fetch("/api/agents/gap-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          customerId,
+          rulesToColumnResponse: payload,
+          rulesetVersion: fileState.rulesetVersion,
+          ...(fidessa_catalog && { fidessa_catalog }),
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to start gap analysis");
+      }
+      const { jobId } = await res.json();
+      if (!jobId) throw new Error("No jobId returned");
+      const newGapAnalysis = await pollGapAnalysisJob(jobId);
+      updateFileState(fileId, { gapAnalysis: newGapAnalysis, clientRulesVersion: alternateVersion });
+      await fetch("/api/projects/file-uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId,
+          fileId,
+          filename: fileState.file.name,
+          fileType: fileState.file.type || "application/pdf",
+          markdown: fileState.markdown ?? "",
+          rulesetVersion: fileState.rulesetVersion,
+          clientRulesVersion: alternateVersion,
+        }),
+      });
+    } catch (err) {
+      console.error("[ProcessingPage] Re-run gap analysis error:", err);
+      alert(err instanceof Error ? err.message : "Failed to re-run gap analysis");
+    } finally {
+      setReRunningGapForFileId(null);
+    }
   };
 
   const handleCompareAllVersions = async (newFiles: FileProcessingState[]) => {
@@ -1001,12 +1081,33 @@ export default function ProcessingPage() {
                   {/* Completed State - Show gap analysis in gap analysis mode */}
                   {fileState.status === "completed" && viewMode === "gapAnalysis" && fileState.gapAnalysis && fileState.gapAnalysis.length > 0 && (
                     <div className="space-y-4 pt-4 border-t">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-lg font-semibold">{fileState.file.name} - Gap Analysis</h4>
-                        {fileState.rulesetVersion && (
-                          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono">
-                            v{fileState.rulesetVersion}
-                          </Badge>
+                      <div className="flex flex-wrap items-center gap-2 justify-between">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-lg font-semibold">{fileState.file.name} - Gap Analysis</h4>
+                          {fileState.rulesetVersion && (
+                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono">
+                              v{fileState.rulesetVersion}
+                            </Badge>
+                          )}
+                        </div>
+                        {fileState.rulesToColumnResponse && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={reRunningGapForFileId === fileState.id}
+                            onClick={() => handleRerunGapAnalysisWithAlternateVersion(fileState.id, fileState)}
+                          >
+                            {reRunningGapForFileId === fileState.id ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Re-running…
+                              </>
+                            ) : (fileState.clientRulesVersion ?? "v1") === "v1" ? (
+                              "Run again with client rules version 2"
+                            ) : (
+                              "Run again with client rules version 1"
+                            )}
+                          </Button>
                         )}
                       </div>
                       <GapAnalysisDisplay mappedRules={fileState.gapAnalysis} />

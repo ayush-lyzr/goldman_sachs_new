@@ -10,6 +10,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Settings2,
   Globe,
   Briefcase,
@@ -233,30 +240,15 @@ export function ClientRulesModal() {
                   </p>
                 </div>
               </div>
-              <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-100/80">
-                <button
-                  type="button"
-                  onClick={() => setViewVersion("v1")}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                    viewVersion === "v1"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  V1
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewVersion("v2")}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                    viewVersion === "v2"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  V2
-                </button>
-              </div>
+              <Select value={viewVersion} onValueChange={(v) => setViewVersion(v as "v1" | "v2")}>
+                <SelectTrigger className="w-24 h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="v1">V1</SelectItem>
+                  <SelectItem value="v2">V2</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <ScrollArea className="h-[420px]">

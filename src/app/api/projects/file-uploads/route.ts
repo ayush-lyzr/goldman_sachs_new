@@ -4,11 +4,12 @@ import { Project } from "@/models/Project";
 
 interface SaveFileUploadRequest {
   customerId: string;
-  fileId: string; // Unique identifier for this file upload
+  fileId: string;
   filename: string;
   fileType: string;
   markdown: string;
   rulesetVersion?: number;
+  clientRulesVersion?: "v1" | "v2";
 }
 
 /**
@@ -92,12 +93,13 @@ export async function POST(req: Request) {
         );
 
         if (existingUploadIndex >= 0) {
-          // Update existing file upload (only happens if the SAME fileId is sent again)
           console.log("[file-uploads POST] Updating existing file upload with fileId:", body.fileId);
           if (body.rulesetVersion !== undefined) {
             project.fileUploads[existingUploadIndex].rulesetVersion = body.rulesetVersion;
           }
-          // Update other fields if provided
+          if (body.clientRulesVersion !== undefined) {
+            project.fileUploads[existingUploadIndex].clientRulesVersion = body.clientRulesVersion;
+          }
           if (body.markdown) {
             project.fileUploads[existingUploadIndex].markdown = body.markdown;
           }
@@ -105,7 +107,6 @@ export async function POST(req: Request) {
             project.fileUploads[existingUploadIndex].fileType = body.fileType;
           }
         } else {
-          // Create new file upload
           console.log("[file-uploads POST] Creating new file upload with ID:", body.fileId);
           const fileUpload = {
             fileId: body.fileId,
@@ -114,6 +115,7 @@ export async function POST(req: Request) {
             markdown: body.markdown,
             uploadedAt: new Date(),
             rulesetVersion: body.rulesetVersion,
+            clientRulesVersion: body.clientRulesVersion,
           };
           project.fileUploads.push(fileUpload);
         }
@@ -297,7 +299,7 @@ export async function GET(req: Request) {
         : null;
 
       return {
-        fileId: upload.fileId, // May be undefined for old records
+        fileId: upload.fileId,
         filename: upload.filename,
         fileType: upload.fileType,
         markdown: upload.markdown,
@@ -305,6 +307,7 @@ export async function GET(req: Request) {
           ? upload.uploadedAt.toISOString() 
           : upload.uploadedAt,
         rulesetVersion: upload.rulesetVersion,
+        clientRulesVersion: upload.clientRulesVersion,
         ruleset: ruleset
           ? {
               version: ruleset.version,

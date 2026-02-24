@@ -28,13 +28,16 @@ import { MarkdownDisplay } from "@/components/constraints/MarkdownDisplay";
 import { ExtractedRulesDisplay } from "@/components/constraints/ExtractedRulesDisplay";
 import { GapAnalysisDisplay } from "@/components/rules/GapAnalysisDisplay";
 import { RulesVersionTable } from "@/components/comparison/RulesVersionTable";
+import { getCustomerById, getCatalogForVersion } from "@/lib/customers";
 
 interface FileUpload {
+  fileId?: string;
   filename: string;
   fileType: string;
   markdown: string;
   uploadedAt: string;
   rulesetVersion?: number;
+  clientRulesVersion?: "v1" | "v2";
   ruleset?: {
     version: number;
     versionName: string;
@@ -65,6 +68,8 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
   const [loadingComparison, setLoadingComparison] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableRulesets, setAvailableRulesets] = useState<Array<{ version: number; versionName: string }>>([]);
+  const [rulesToColumnResponseForRerun, setRulesToColumnResponseForRerun] = useState<{ mapped_rules: any[]; version: number; versionName?: string } | null>(null);
+  const [reRunningGapAnalysis, setReRunningGapAnalysis] = useState(false);
 
   const loadFileUploads = async () => {
     if (!customerId) {
@@ -275,6 +280,10 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
         }
         
         setGapAnalysis(gap);
+        const rs = data.ruleset;
+        setRulesToColumnResponseForRerun(rs?.data?.mapped_rules?.length
+          ? { mapped_rules: rs.data.mapped_rules, version: rs.version, versionName: rs.versionName }
+          : null);
       } else {
         const errorData = await response.json().catch(() => ({}));
         console.error("[Gap Analysis] API Error:", response.status, errorData);
@@ -285,6 +294,89 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
       alert("Error loading gap analysis. Please check console for details.");
     } finally {
       setLoadingRules(false);
+    }
+  };
+
+  const pollGapAnalysisJob = async (jobId: string, maxAttempts: number = 120): Promise<any[]> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await fetch(`/api/agents/gap-analysis?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Gap analysis poll failed");
+      const jobStatus = await res.json();
+      if (jobStatus.status === "completed" && jobStatus.result) return jobStatus.result.mapped_rules || [];
+      if (jobStatus.status === "failed") throw new Error(jobStatus.error || "Gap analysis job failed");
+      await new Promise((r) => setTimeout(r, Math.min(1000 * (attempt + 1), 5000)));
+    }
+    throw new Error("Gap analysis job timed out");
+  };
+
+  const handleRerunGapAnalysisWithAlternateVersion = async () => {
+    if (!selectedUpload || !rulesToColumnResponseForRerun || !customerId) return;
+    const projectId = typeof window !== "undefined" ? sessionStorage.getItem("currentProjectId") || "" : "";
+    if (!projectId) {
+      alert("Session missing. Please open the project from the projects page and try again.");
+      return;
+    }
+    const currentVersion = selectedUpload.clientRulesVersion ?? "v1";
+    const alternateVersion: "v1" | "v2" = currentVersion === "v1" ? "v2" : "v1";
+    const rulesetVersion = selectedUpload.rulesetVersion ?? selectedUpload.ruleset?.version;
+    if (!rulesetVersion) {
+      alert("No ruleset version for this upload.");
+      return;
+    }
+    setReRunningGapAnalysis(true);
+    try {
+      let fidessa_catalog: Record<string, string> | undefined;
+      const storedCompany = typeof window !== "undefined" ? sessionStorage.getItem("currentSelectedCompany") : null;
+      if (storedCompany) {
+        try {
+          const parsed = JSON.parse(storedCompany) as { companyId?: string };
+          const customer = parsed?.companyId ? getCustomerById(parsed.companyId) : null;
+          if (customer) fidessa_catalog = getCatalogForVersion(customer, alternateVersion) as unknown as Record<string, string>;
+        } catch (err) {
+          console.error("[FileUploadHistory] Error resolving client catalog:", err);
+        }
+      }
+      const res = await fetch("/api/agents/gap-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          customerId,
+          rulesToColumnResponse: rulesToColumnResponseForRerun,
+          rulesetVersion,
+          ...(fidessa_catalog && { fidessa_catalog }),
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to start gap analysis");
+      }
+      const { jobId } = await res.json();
+      if (!jobId) throw new Error("No jobId returned");
+      const newGapAnalysis = await pollGapAnalysisJob(jobId);
+      setGapAnalysis(newGapAnalysis);
+      if (selectedUpload.fileId) {
+        await fetch("/api/projects/file-uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId,
+            fileId: selectedUpload.fileId,
+            filename: selectedUpload.filename,
+            fileType: selectedUpload.fileType,
+            markdown: selectedUpload.markdown ?? "",
+            rulesetVersion,
+            clientRulesVersion: alternateVersion,
+          }),
+        });
+      }
+      setSelectedUpload({ ...selectedUpload, clientRulesVersion: alternateVersion });
+      loadFileUploads();
+    } catch (err) {
+      console.error("[FileUploadHistory] Re-run gap analysis error:", err);
+      alert(err instanceof Error ? err.message : "Failed to re-run gap analysis");
+    } finally {
+      setReRunningGapAnalysis(false);
     }
   };
 
@@ -564,22 +656,44 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
     return (
       <Card>
         <CardHeader className="pb-3 border-b border-border/50">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <FileText className="w-4 h-4 text-primary" />
               Gap Analysis - {selectedUpload.filename}
             </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setViewMode("list");
-                setSelectedUpload(null);
-                setGapAnalysis([]);
-              }}
-            >
-              Back to List
-            </Button>
+            <div className="flex items-center gap-2">
+              {rulesToColumnResponseForRerun && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reRunningGapAnalysis}
+                  onClick={handleRerunGapAnalysisWithAlternateVersion}
+                >
+                  {reRunningGapAnalysis ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Re-running…
+                    </>
+                  ) : (selectedUpload.clientRulesVersion ?? "v1") === "v1" ? (
+                    "Run again with client rules version 2"
+                  ) : (
+                    "Run again with client rules version 1"
+                  )}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setViewMode("list");
+                  setSelectedUpload(null);
+                  setGapAnalysis([]);
+                  setRulesToColumnResponseForRerun(null);
+                }}
+              >
+                Back to List
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-4">
@@ -599,7 +713,7 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
               </div>
               {selectedUpload?.rulesetVersion && (
                 <div className="text-xs text-muted-foreground/50 mt-2">
-                  Ruleset Version: {selectedUpload.rulesetVersion}
+                  Document version: {selectedUpload.rulesetVersion}
                 </div>
               )}
             </div>
@@ -777,11 +891,17 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
                           {upload.fileType}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2 flex-wrap">
                         <div className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           <span>{formatDate(upload.uploadedAt)}</span>
                         </div>
+                        {(upload.clientRulesVersion === "v1" || upload.clientRulesVersion === "v2") && (
+                          <>
+                            <span>•</span>
+                            <span>Client rules: <strong className="text-foreground/80">{upload.clientRulesVersion.toUpperCase()}</strong></span>
+                          </>
+                        )}
                         {upload.ruleset && (
                           <>
                             <span>•</span>
