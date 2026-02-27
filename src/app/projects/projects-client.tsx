@@ -4,6 +4,13 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { CUSTOMERS, getCatalogForVersion } from "@/lib/customers";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 
 type ProjectStatus = "Compliant" | "Under Review" | "Issues Found";
 
@@ -54,10 +61,14 @@ export default function ProjectsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [name, setName] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState(CUSTOMERS[0]?.id || "");
   const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -165,6 +176,68 @@ export default function ProjectsClient() {
       }
     },
     [creating, load, name, selectedCustomerId],
+  );
+
+  const onEdit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!projectToEdit || updating) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const selectedCustomer = CUSTOMERS.find((c) => c.id === selectedCustomerId);
+      if (!selectedCustomer) {
+        setError("Please select a customer");
+        return;
+      }
+      setUpdating(true);
+      setError(null);
+      try {
+        const selectedCompanyPayload: SelectedCompany = {
+          companyId: selectedCustomer.id,
+          companyName: selectedCustomer.name,
+          fidessa_catalog: getCatalogForVersion(selectedCustomer, "v1") as unknown as Record<string, string>,
+          fidessa_catalog_v1: selectedCustomer.fidessa_catalog_v1 as unknown as Record<string, string>,
+          fidessa_catalog_v2: selectedCustomer.fidessa_catalog_v2 as unknown as Record<string, string>,
+          rulesVersion: "v1",
+        };
+        const res = await fetch(`/api/projects/${projectToEdit.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: trimmed, selectedCompany: selectedCompanyPayload }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data?.error ?? `Update failed (${res.status})`);
+        setProjectToEdit(null);
+        setName("");
+        setSelectedCustomerId(CUSTOMERS[0]?.id || "");
+        void load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to update project");
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [projectToEdit, selectedCustomerId, name, updating, load],
+  );
+
+  const onDelete = useCallback(
+    async (project: Project) => {
+      if (!project || deleting) return;
+      setDeleting(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data?.error ?? `Delete failed (${res.status})`);
+        setProjectToDelete(null);
+        void load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to delete project");
+      } finally {
+        setDeleting(false);
+      }
+    },
+    [deleting, load],
   );
 
   // Stats calculations
@@ -371,13 +444,11 @@ export default function ProjectsClient() {
                       sessionStorage.setItem("currentCustomerId", project.customerId);
                       sessionStorage.setItem("currentProjectId", project.id);
                       
-                      // Load the selected company from project data or localStorage
                       if (project.selectedCompany) {
                         sessionStorage.setItem("currentSelectedCompany", JSON.stringify(project.selectedCompany));
                         const rv = (project.selectedCompany as SelectedCompany).rulesVersion ?? "v1";
                         sessionStorage.setItem("currentRulesVersion", rv);
                       } else {
-                        // Try to load from localStorage as fallback
                         const storedCompany = localStorage.getItem(`project_${project.id}_company`);
                         if (storedCompany) {
                           sessionStorage.setItem("currentSelectedCompany", storedCompany);
@@ -400,11 +471,43 @@ export default function ProjectsClient() {
                       <h4 className="font-semibold text-slate-900">{project.name}</h4>
                       <p className="text-sm text-slate-500">{project.type}</p>
                     </div>
-                    <button className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        asChild
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                          aria-label="Project options"
+                        >
+                          <MoreVertical className="w-5 h-5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjectToEdit(project);
+                            setName(project.name);
+                            setSelectedCustomerId((project.selectedCompany as SelectedCompany)?.companyId ?? CUSTOMERS[0]?.id ?? "");
+                          }}
+                        >
+                          <Pencil className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjectToDelete(project);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   
                   <div className="flex items-center gap-4 text-sm text-slate-500">
@@ -501,6 +604,128 @@ export default function ProjectsClient() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit project modal */}
+      {projectToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => {
+              setProjectToEdit(null);
+              setName("");
+              setSelectedCustomerId(CUSTOMERS[0]?.id || "");
+            }}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Edit Project</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Update project name and customer</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setProjectToEdit(null);
+                  setName("");
+                  setSelectedCustomerId(CUSTOMERS[0]?.id || "");
+                }}
+                className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={onEdit}>
+              <label className="block mb-4">
+                <span className="text-sm font-medium text-slate-700 mb-2 block">Project Name</span>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Blackstone Family Office"
+                  className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#64A8F0]/20 focus:border-[#64A8F0] transition-all placeholder:text-slate-400"
+                  maxLength={120}
+                />
+              </label>
+              <label className="block mb-5">
+                <span className="text-sm font-medium text-slate-700 mb-2 block">Customer</span>
+                <div className="relative">
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#64A8F0]/20 focus:border-[#64A8F0] transition-all appearance-none bg-white cursor-pointer"
+                  >
+                    {CUSTOMERS.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectToEdit(null);
+                    setName("");
+                    setSelectedCustomerId(CUSTOMERS[0]?.id || "");
+                  }}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!name.trim() || !selectedCustomerId || updating}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-[#64A8F0] rounded-xl hover:bg-[#5594d9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                >
+                  {updating ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => setProjectToDelete(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-fade-in-up">
+            <h3 className="text-lg font-semibold text-slate-900">Delete project?</h3>
+            <p className="text-sm text-slate-500 mt-2">
+              &ldquo;{projectToDelete.name}&rdquo; will be permanently deleted. This cannot be undone.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setProjectToDelete(null)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(projectToDelete)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
           </div>
         </div>
       )}
