@@ -8,6 +8,17 @@ import { useState } from "react";
 interface ExtractedRule {
   title: string;
   rules: string[];
+  /** Confidence score from rules-extractor (0–1, 1 = max) */
+  confidence_score?: number;
+}
+
+/** Solid-color pill with white text — maximum readability. Score 0–1, 1 = best. */
+function getConfidenceBadgeClass(score: number): string {
+  if (score >= 0.9) return "bg-emerald-500 border border-emerald-600 text-white";
+  if (score >= 0.75) return "bg-teal-500 border border-teal-600 text-white";
+  if (score >= 0.5) return "bg-amber-500 border border-amber-600 text-white";
+  if (score >= 0.25) return "bg-orange-500 border border-orange-600 text-white";
+  return "bg-rose-600 border border-rose-700 text-white";
 }
 
 interface ExtractedRulesDisplayProps {
@@ -108,11 +119,9 @@ export function ExtractedRulesDisplay({ rules }: ExtractedRulesDisplayProps) {
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-0.5">
-                      <span className="font-mono text-xs font-bold text-primary/50 tracking-wider">
-                        Constraints {String(sectionIndex + 1).padStart(2, '0')}
-                      </span>
-                    </div>
+                    <span className="font-mono text-xs font-bold text-primary/50 tracking-wider">
+                      Constraints {String(sectionIndex + 1).padStart(2, '0')}
+                    </span>
                     <h3 className="text-base font-semibold text-foreground tracking-tight group-hover:text-primary transition-colors duration-300 truncate pr-4">
                       {section.title}
                     </h3>
@@ -120,6 +129,14 @@ export function ExtractedRulesDisplay({ rules }: ExtractedRulesDisplayProps) {
                 </div>
 
                 <div className="flex items-center gap-3">
+                  {section.confidence_score != null && Number.isFinite(section.confidence_score) && (
+                    <span
+                      className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-[3px] text-[11px] font-semibold tracking-wide shadow-sm select-none ${getConfidenceBadgeClass(section.confidence_score)}`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/70 shrink-0" />
+                      Confidence {Math.round(section.confidence_score * 100)}%
+                    </span>
+                  )}
                   <Badge 
                     variant="outline" 
                     className="text-xs font-semibold shrink-0 bg-primary/5 border-primary/20 px-2.5 py-1 group-hover:bg-primary/10 group-hover:border-primary/30 transition-all duration-300"

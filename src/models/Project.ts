@@ -13,6 +13,8 @@ export interface IRuleset {
     raw_rules?: Array<{
       title: string;
       rules: string[];
+      /** Confidence score from rules-extractor (0–1, 1 = max) */
+      confidence_score?: number;
     }>;
     gap_analysis?: Array<{
       constraint: string;

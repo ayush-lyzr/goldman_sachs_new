@@ -179,9 +179,9 @@ export async function POST(req: Request) {
         } else {
           console.log(`[rules-to-column] Creating new ruleset ${versionName}`);
 
-          // Extract raw_rules from the request
+          // Extract raw_rules from the request (include confidence_score when present)
           const rawRules = typeof body.rulesExtractorResponse === "object" 
-            ? (body.rulesExtractorResponse as { rules?: Array<{ title: string; rules: string[] }> }).rules
+            ? (body.rulesExtractorResponse as { rules?: Array<{ title: string; rules: string[]; confidence_score?: number }> }).rules
             : undefined;
 
           console.log(`[rules-to-column] Creating ${versionName} with mapped_rules: ${parsedResponse.mapped_rules?.length || 0}, raw_rules: ${rawRules?.length || 0}`);

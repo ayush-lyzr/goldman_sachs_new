@@ -13,6 +13,8 @@ interface RulesExtractorRequest {
 interface Rule {
   title: string;
   rules: string[];
+  /** Confidence score 0–1 (1 = max). Optional if agent does not return it. */
+  confidence_score?: number;
 }
 
 interface RulesExtractorResponse {
