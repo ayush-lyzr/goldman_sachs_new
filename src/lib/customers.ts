@@ -43,12 +43,6 @@ const COMPOSITE_RATING_BASE = "AAA,AA+,AA,AA-,A+,A,A-,BBB+,BBB,BBB-,BB+,BB,BB-,B
 const SECTOR_V1_CLIENT1 = "Financials,Government,Industrial,Utilities,Energy,Real Estate,Communications,Consumer,Healthcare,Technology,Transport,Supranational";
 const SECTOR_V2_CLIENT1 = "Financials,Government,Industrial,Utilities,Energy,Communications,Consumer,Healthcare,Technology";
 
-const SECTOR_V1_CLIENT2 = "Government,Financials,Industrial,Utilities,Energy,Real Estate,Communications,Consumer,Healthcare,Technology,Transport,Supranational";
-const SECTOR_V2_CLIENT2 = "Government,Financials,Industrial,Utilities,Energy,Communications,Consumer,Healthcare,Technology";
-
-const SECTOR_V1_CLIENT3 = "Government,Supranational,Financials,Industrial,Utilities,Energy,Real Estate,Communications,Consumer,Healthcare,Technology,Transport";
-const SECTOR_V2_CLIENT3 = "Government,Financials,Industrial,Utilities,Energy,Communications,Consumer,Healthcare,Technology";
-
 /** Available customers with versioned catalogs */
 export const CUSTOMERS: Customer[] = [
   {
@@ -81,74 +75,6 @@ export const CUSTOMERS: Customer[] = [
       Instrument_Type: "Sovereign,Supranational,Corporate,Agency,Municipal,Sukuk",
       Composite_Rating: COMPOSITE_RATING_BASE,
       IG_Flag: "No",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "No",
-    },
-  },
-  {
-    id: "client-2",
-    name: "Client 2",
-    fidessa_catalog: {
-      Issuer_Country: ISSUER_COUNTRY_BASE,
-      Instrument_Type: "Sovereign,Corporate,Sukuk",
-      Composite_Rating: COMPOSITE_RATING_BASE,
-      IG_Flag: "Yes",
-      Sector: SECTOR_V1_CLIENT2,
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "Yes",
-    },
-    fidessa_catalog_v1: {
-      Issuer_Country: ISSUER_COUNTRY_BASE,
-      Instrument_Type: "Sovereign,Corporate,Sukuk",
-      Composite_Rating: COMPOSITE_RATING_BASE,
-      IG_Flag: "Yes",
-      Sector: SECTOR_V1_CLIENT2,
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "Yes",
-    },
-    fidessa_catalog_v2: {
-      Issuer_Country: ISSUER_COUNTRY_V2,
-      Instrument_Type: "Sovereign,Corporate,Sukuk",
-      Composite_Rating: COMPOSITE_RATING_BASE,
-      IG_Flag: "No",
-      Sector: SECTOR_V2_CLIENT2,
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "No",
-    },
-  },
-  {
-    id: "client-3",
-    name: "Client 3",
-    fidessa_catalog: {
-      Issuer_Country: ISSUER_COUNTRY_BASE,
-      Instrument_Type: "Sovereign,Supranational,Agency,Corporate",
-      Composite_Rating: COMPOSITE_RATING_BASE,
-      IG_Flag: "Yes",
-      Sector: SECTOR_V1_CLIENT3,
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "Yes",
-    },
-    fidessa_catalog_v1: {
-      Issuer_Country: ISSUER_COUNTRY_BASE,
-      Instrument_Type: "Sovereign,Supranational,Agency,Corporate",
-      Composite_Rating: COMPOSITE_RATING_BASE,
-      IG_Flag: "Yes",
-      Sector: SECTOR_V1_CLIENT3,
-      Coupon_Rate: "0.0-12.0%",
-      Days_to_Maturity: "1-10957",
-      Shariah_Compliant: "Yes",
-    },
-    fidessa_catalog_v2: {
-      Issuer_Country: ISSUER_COUNTRY_V2,
-      Instrument_Type: "Sovereign,Supranational,Agency,Corporate",
-      Composite_Rating: COMPOSITE_RATING_BASE,
-      IG_Flag: "No",
-      Sector: SECTOR_V2_CLIENT3,
-      Coupon_Rate: "0.0-12.0%",
       Days_to_Maturity: "1-10957",
       Shariah_Compliant: "No",
     },
