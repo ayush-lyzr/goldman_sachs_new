@@ -27,11 +27,11 @@ interface FileProcessingState {
   mappedRules?: any[];
   gapAnalysis?: any[];
   rulesetVersion?: number;
-  /** Stored so we can re-run gap analysis with alternate client rules version */
+  /** Stored so we can re-run gap analysis with alternate Sentinal rules version */
   rulesToColumnResponse?: object;
   showDetails?: boolean;
   viewMode?: "markdown" | "rules" | "mapped" | "gapAnalysis" | null;
-  /** Client rules version (V1/V2) chosen for this file when uploading */
+  /** Sentinal rules version (V1/V2) chosen for this file when uploading */
   clientRulesVersion?: "v1" | "v2";
 }
 
@@ -46,6 +46,7 @@ export default function ProcessingPage() {
   const [activityLog, setActivityLog] = useState<ProcessingActivityEntry[]>([]);
   const [sessionIdForWs, setSessionIdForWs] = useState<string | null>(null);
   const [reRunningGapForFileId, setReRunningGapForFileId] = useState<string | null>(null);
+  const [showAgentActivity, setShowAgentActivity] = useState(false);
 
   // Track which files have been processed to prevent duplicates (React StrictMode causes useEffect to run twice)
   const processedFilesRef = useRef<Set<string>>(new Set());
@@ -301,7 +302,7 @@ export default function ProcessingPage() {
       pushActivity(fileId, fileState.file.name, "Gap analysis", "started");
       updateFileState(fileId, { status: "gap-analysis", mappedRules, rulesetVersion });
       
-      // Get fidessa_catalog from client list by companyId + this file's selected client rules version
+      // Get fidessa_catalog from client list by companyId + this file's selected Sentinal rules version
       const rulesVersion = fileState.clientRulesVersion ?? "v1";
       let fidessa_catalog: Record<string, string> | undefined = undefined;
       if (typeof window !== "undefined") {
@@ -366,7 +367,7 @@ export default function ProcessingPage() {
       }
 
       pushActivity(fileId, fileState.file.name, `Completed (v${rulesetVersion})`, "completed");
-      // Mark as completed (store rulesToColumnResponse for re-run with alternate client rules version)
+      // Mark as completed (store rulesToColumnResponse for re-run with alternate Sentinal rules version)
       const currentFileState = files.find(f => f.id === fileId);
       updateFileState(fileId, { 
         status: "completed",
@@ -917,7 +918,7 @@ export default function ProcessingPage() {
       ) : (
         <Card className="mb-6">
           <CardContent className="p-4">
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-between gap-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -931,6 +932,14 @@ export default function ProcessingPage() {
               >
                 <Upload className="w-4 h-4" />
                 Upload More Files
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs px-3 py-1 h-8"
+                onClick={() => setShowAgentActivity((prev) => !prev)}
+              >
+                {showAgentActivity ? "Hide Agent Activity" : "Show Agent Activity"}
               </Button>
             </div>
           </CardContent>
@@ -1103,9 +1112,9 @@ export default function ProcessingPage() {
                                 Re-running…
                               </>
                             ) : (fileState.clientRulesVersion ?? "v1") === "v1" ? (
-                              "Run again with client rules version 2"
+                              "Run again with Sentinal rules version 2"
                             ) : (
-                              "Run again with client rules version 1"
+                              "Run again with Sentinal rules version 1"
                             )}
                           </Button>
                         )}
@@ -1122,20 +1131,22 @@ export default function ProcessingPage() {
       </div>
       </div>
 
-        {/* Agent Activity panel - right side (same pattern as agentic-shopping-experience) */}
-        <div className="w-[320px] shrink-0 flex flex-col min-h-0 hidden lg:flex">
-          <ProcessingActivityPanel
-            activityLog={activityLog}
-            isProcessing={isProcessing}
-            currentFile={currentFileForPanel}
-            wsEventsByAgent={wsAgentEvents.eventsByAgent}
-            wsActiveAgentKeys={wsAgentEvents.activeAgentKeys}
-            wsConnected={wsAgentEvents.isConnected}
-            activeLocalAgentKeys={activeLocalAgentKeys}
-            wsEvents={wsAgentEvents.events}
-            wsLastThinkingMessage={wsAgentEvents.lastThinkingMessage}
-          />
-        </div>
+        {/* Agent Activity panel - right side (collapsible, controlled by top toggle) */}
+        {showAgentActivity && (
+          <div className="w-[320px] shrink-0 flex flex-col min-h-0 hidden lg:flex">
+            <ProcessingActivityPanel
+              activityLog={activityLog}
+              isProcessing={isProcessing}
+              currentFile={currentFileForPanel}
+              wsEventsByAgent={wsAgentEvents.eventsByAgent}
+              wsActiveAgentKeys={wsAgentEvents.activeAgentKeys}
+              wsConnected={wsAgentEvents.isConnected}
+              activeLocalAgentKeys={activeLocalAgentKeys}
+              wsEvents={wsAgentEvents.events}
+              wsLastThinkingMessage={wsAgentEvents.lastThinkingMessage}
+            />
+          </div>
+        )}
       </div>
     </AppLayout>
   );

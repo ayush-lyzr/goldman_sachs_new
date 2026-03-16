@@ -675,9 +675,9 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
                       Re-running…
                     </>
                   ) : (selectedUpload.clientRulesVersion ?? "v1") === "v1" ? (
-                    "Run again with client rules version 2"
+                    "Run again with Sentinal rules version 2"
                   ) : (
-                    "Run again with client rules version 1"
+                    "Run again with Sentinal rules version 1"
                   )}
                 </Button>
               )}
@@ -713,7 +713,7 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
               </div>
               {selectedUpload?.rulesetVersion && (
                 <div className="text-xs text-muted-foreground/50 mt-2">
-                  Document version: {selectedUpload.rulesetVersion}
+                  IMA version: {selectedUpload.rulesetVersion}
                 </div>
               )}
             </div>
@@ -899,7 +899,7 @@ export function FileUploadHistory({ customerId, refreshTrigger }: FileUploadHist
                         {(upload.clientRulesVersion === "v1" || upload.clientRulesVersion === "v2") && (
                           <>
                             <span>•</span>
-                            <span>Client rules: <strong className="text-foreground/80">{upload.clientRulesVersion.toUpperCase()}</strong></span>
+                            <span>Sentinal rules: <strong className="text-foreground/80">{upload.clientRulesVersion.toUpperCase()}</strong></span>
                           </>
                         )}
                         {upload.ruleset && (

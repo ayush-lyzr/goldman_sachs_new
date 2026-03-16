@@ -47,7 +47,7 @@ export interface IFileUpload {
   markdown: string;
   uploadedAt: Date;
   rulesetVersion?: number; // Link to the ruleset version created from this upload
-  clientRulesVersion?: "v1" | "v2"; // Client rules version (V1/V2) used for this upload
+  clientRulesVersion?: "v1" | "v2"; // Sentinal rules version (V1/V2) used for this upload
 }
 
 export interface IProject extends Document {

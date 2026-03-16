@@ -20,7 +20,7 @@ interface SelectedFile {
   file: File;
   id: string;
   version?: number; // Selected version number (undefined = auto-assign new version)
-  clientRulesVersion?: ClientRulesVersion; // Client rules version (V1/V2) for this file
+  clientRulesVersion?: ClientRulesVersion; // Sentinal rules version (V1/V2) for this file
 }
 
 export function UploadZone() {
@@ -111,7 +111,7 @@ export function UploadZone() {
       alert("Some files were skipped. Please upload only PDF or DOCX files.");
     }
 
-    // Add new files without version (will be auto-assigned based on order); default client rules V1
+    // Add new files without version (will be auto-assigned based on order); default Sentinal rules V1
     const newSelectedFiles: SelectedFile[] = validFiles.map(file => ({
       file,
       id: crypto.randomUUID(),
@@ -379,7 +379,7 @@ export function UploadZone() {
                           </p>
                           <span className="text-xs text-muted-foreground">•</span>
               <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Document version:</span>
+                            <span className="text-xs text-muted-foreground">IMA version:</span>
                             <Select
                               value={displayVersion.toString()}
                               onValueChange={(value) => {
@@ -403,7 +403,7 @@ export function UploadZone() {
                           </div>
                           <span className="text-xs text-muted-foreground">•</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Client rules:</span>
+                            <span className="text-xs text-muted-foreground">Sentinal rules:</span>
                             <Select
                               value={selectedFile.clientRulesVersion ?? "v1"}
                               onValueChange={(value) => handleClientRulesVersionChange(selectedFile.id, value as ClientRulesVersion)}

@@ -205,11 +205,11 @@ export function ClientRulesModal() {
           className="gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all duration-200 group"
         >
           <Scale className="w-4 h-4 group-hover:scale-110 transition-transform duration-300" />
-          <span className="hidden sm:inline text-sm font-medium">Client Rules</span>
+          <span className="hidden sm:inline text-sm font-medium">Sentinal rules</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden bg-white border border-slate-200 shadow-2xl rounded-xl">
-        <DialogTitle className="sr-only">Client Rules</DialogTitle>
+        <DialogTitle className="sr-only">Sentinal rules</DialogTitle>
         <div className="px-5 pt-5 pb-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-[#64A8F0] shadow-md">
@@ -217,7 +217,7 @@ export function ClientRulesModal() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
-                Client Rules
+                Sentinal rules
               </h2>
               <p className="text-xs text-slate-500">
                 Investment rules & constraints

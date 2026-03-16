@@ -272,7 +272,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
       <div className="grid grid-cols-12 gap-6 px-5 py-3 bg-muted/30 rounded-lg border border-border/50">
         <div className="col-span-3">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            Constraint
+            Guidelines
           </span>
         </div>
         <div className="col-span-3">
@@ -281,15 +281,20 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
             PDF Values
           </span>
         </div>
-        <div className="col-span-4">
+        <div className="col-span-2">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
             Sentinel Values {selectedCustomer && `(${selectedCustomer.companyName})`}
           </span>
         </div>
-        <div className="col-span-2 text-right">
+        <div className="col-span-1 text-right">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             Status
+          </span>
+        </div>
+        <div className="col-span-3 text-right">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Extracted Rules
           </span>
         </div>
       </div>
@@ -382,7 +387,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                   </div>
 
                   {/* Sentinel Values */}
-                  <div className="col-span-4 space-y-1.5">
+                  <div className="col-span-2 space-y-1.5">
                     <div className="flex flex-wrap gap-1.5">
                       {(() => {
                         const catalogEntry = selectedCustomer?.fidessa_catalog?.[rule.constraint];
@@ -454,7 +459,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                   </div>
 
                   {/* Status */}
-                  <div className="col-span-2 flex items-center justify-end">
+                  <div className="col-span-1 flex items-center justify-end">
                     <div className="flex items-center gap-2">
                       {rule.matched ? (
                         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
@@ -492,6 +497,58 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                       )}
                     </div>
                   </div>
+                  
+                  {/* Extracted Rules (inline preview with bullets) */}
+                  <div className="col-span-3 flex items-start justify-end">
+                    {rule.rules && rule.rules.length > 0 ? (
+                      <div className="relative w-full text-right">
+                        <div
+                          className={`space-y-1 text-left ${
+                            expandedIndex === index ? "max-h-none overflow-visible" : "max-h-24 overflow-hidden"
+                          }`}
+                        >
+                          {rule.rules.map((ruleText, ruleIndex) => (
+                            <div key={ruleIndex} className="flex items-start gap-1.5">
+                              <span className="mt-[3px] h-1 w-1 rounded-full bg-primary/70 shrink-0" />
+                              <p className="text-[11px] text-muted-foreground leading-snug">
+                                {ruleText}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        {expandedIndex !== index && rule.rules.length > 1 && (
+                          <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-background/0 flex items-end justify-end">
+                            <button
+                              type="button"
+                              className="text-[10px] font-medium text-primary px-2 py-0.5 bg-background/80 border border-border/60 rounded-full shadow-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedIndex(index);
+                              }}
+                            >
+                              Show more
+                            </button>
+                          </div>
+                        )}
+                        {expandedIndex === index && rule.rules.length > 1 && (
+                          <div className="mt-1 flex justify-end">
+                            <button
+                              type="button"
+                              className="text-[10px] font-medium text-primary/80 px-2 py-0.5 rounded-full hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedIndex(null);
+                              }}
+                            >
+                              Show less
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50 italic">—</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Expanded Delta Section */}
@@ -524,43 +581,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
               </Card>
             </HoverCardTrigger>
 
-            {rule.rules && rule.rules.length > 0 && (
-              <HoverCardContent
-                side="bottom"
-                align="start"
-                sideOffset={10}
-                className="w-[min(640px,calc(100vw-2rem))] p-0 overflow-hidden border-slate-500/20"
-              >
-                <div className="p-4 bg-gradient-to-br from-slate-500/10 via-slate-500/[0.03] to-transparent">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-blue-500/15 border border-blue-500/20">
-                      <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold text-foreground">
-                          Extracted Rules
-                        </p>
-                        <span className="text-[10px] text-muted-foreground">
-                          Hover preview
-                        </span>
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        {rule.rules.map((ruleText, ruleIndex) => (
-                          <div key={ruleIndex} className="flex gap-2">
-                            <span className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5">•</span>
-                            <p className="text-xs text-foreground/80 leading-relaxed flex-1">
-                              {ruleText}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                     
-                    </div>
-                  </div>
-                </div>
-              </HoverCardContent>
-            )}
+            {/* Extracted Rules hover popover removed: now fully shown in the Extracted Rules column */}
           </HoverCard>
         ))}
       </div>
