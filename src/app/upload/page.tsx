@@ -104,8 +104,8 @@ const UploadPage = () => {
             </div>
 
             {/* Main Content */}
-            <div className="grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
+            <div className="grid lg:grid-cols-4 gap-4">
+              <div className="lg:col-span-3 space-y-6">
                 <UploadZone />
                 <FileUploadHistory customerId={customerId} />
               </div>

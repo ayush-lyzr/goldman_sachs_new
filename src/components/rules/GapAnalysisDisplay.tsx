@@ -270,7 +270,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
 
       {/* Column Headers */}
       <div className="grid grid-cols-12 gap-6 px-5 py-3 bg-muted/30 rounded-lg border border-border/50">
-        <div className="col-span-3">
+        <div className="col-span-2">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             Guidelines
           </span>
@@ -292,7 +292,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
             Status
           </span>
         </div>
-        <div className="col-span-3 text-right">
+        <div className="col-span-4 text-right">
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             Extracted Rules
           </span>
@@ -338,7 +338,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
 
                 <div className="relative grid grid-cols-12 gap-6 p-5 pl-7">
                   {/* Constraint Name */}
-                  <div className="col-span-3 flex items-start">
+                  <div className="col-span-2 flex items-start">
                     <div>
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="font-mono text-[10px] font-bold text-primary/50 tracking-wider">
@@ -499,7 +499,7 @@ export function GapAnalysisDisplay({ mappedRules }: GapAnalysisDisplayProps) {
                   </div>
                   
                   {/* Extracted Rules (inline preview with bullets) */}
-                  <div className="col-span-3 flex items-start justify-end">
+                  <div className="col-span-4 flex items-start justify-end">
                     {rule.rules && rule.rules.length > 0 ? (
                       <div className="relative w-full text-right">
                         <div
